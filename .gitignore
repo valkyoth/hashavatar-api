@@ -1,0 +1,20 @@
+target/
+**/target/
+
+.env
+.env.local
+.env.*
+
+podman-data/
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo

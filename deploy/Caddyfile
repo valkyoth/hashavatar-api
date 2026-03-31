@@ -1,0 +1,8 @@
+hashavatar.app, www.hashavatar.app {
+    encode zstd gzip
+
+    header /v1/avatar* Cache-Control "public, max-age=86400, s-maxage=31536000, immutable"
+    header /avatar/* Cache-Control "public, max-age=86400, s-maxage=31536000, immutable"
+
+    reverse_proxy app:8080
+}

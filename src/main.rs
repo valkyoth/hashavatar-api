@@ -24,6 +24,9 @@ const DEFAULT_HOST: &str = "0.0.0.0";
 const DEFAULT_PORT: u16 = 8080;
 const DEFAULT_ID: &str = "demo@example.com";
 const SITE_NAME: &str = "hashavatar.app";
+const SITE_URL: &str = "https://hashavatar.app";
+const REPOSITORY_URL: &str = "https://repoheim.eu/valkyoth/hashavatar-api";
+const CRATE_URL: &str = "https://crates.io/crates/hashavatar/";
 const MIN_SIZE: u32 = 64;
 const MAX_SIZE: u32 = 1024;
 
@@ -47,6 +50,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = Router::new()
         .route("/", get(index))
+        .route("/help", get(help_page))
+        .route("/terms", get(terms_page))
+        .route("/privacy", get(privacy_page))
+        .route("/robots.txt", get(robots_txt))
+        .route("/sitemap.xml", get(sitemap_xml))
         .route("/healthz", get(healthz))
         .route("/v1/avatar", get(query_avatar))
         .route("/v1/avatar/link", get(query_avatar_link))
@@ -61,6 +69,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn index() -> Html<String> {
     Html(render_index_html())
+}
+
+async fn help_page() -> Html<String> {
+    Html(render_help_html())
+}
+
+async fn terms_page() -> Html<String> {
+    Html(render_terms_html())
+}
+
+async fn privacy_page() -> Html<String> {
+    Html(render_privacy_html())
+}
+
+async fn robots_txt() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        format!(
+            "User-agent: *\nAllow: /\n\nSitemap: {}/sitemap.xml\n",
+            SITE_URL
+        ),
+    )
+}
+
+async fn sitemap_xml() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/xml; charset=utf-8")],
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{site}/</loc></url>
+  <url><loc>{site}/help</loc></url>
+  <url><loc>{site}/terms</loc></url>
+  <url><loc>{site}/privacy</loc></url>
+</urlset>"#,
+            site = SITE_URL
+        ),
+    )
 }
 
 async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
@@ -301,16 +347,9 @@ fn internal_error(error: impl std::fmt::Display) -> Response {
         .into_response()
 }
 
-fn render_index_html() -> String {
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>hashavatar.app</title>
-  <style>
-    :root {{
+fn shared_page_styles() -> &'static str {
+    r#"
+    :root {
       --bg: #fbf6ee;
       --panel: rgba(255,255,255,0.86);
       --ink: #1f2933;
@@ -320,9 +359,9 @@ fn render_index_html() -> String {
       --accent-strong: #b85a25;
       --surface: rgba(255,255,255,0.74);
       font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
+    }
+    * { box-sizing: border-box; }
+    body {
       margin: 0;
       min-height: 100vh;
       background:
@@ -331,8 +370,8 @@ fn render_index_html() -> String {
         linear-gradient(135deg, #fbf6ee, #f2ece4);
       color: var(--ink);
       padding: 32px 20px;
-    }}
-    main {{
+    }
+    main {
       width: min(1180px, 100%);
       margin: 0 auto;
       background: var(--panel);
@@ -340,7 +379,245 @@ fn render_index_html() -> String {
       border-radius: 28px;
       box-shadow: 0 24px 70px rgba(75, 48, 25, 0.14);
       overflow: hidden;
-    }}
+    }
+    .site-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 28px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.5);
+    }
+    .brand {
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--ink);
+      text-decoration: none;
+    }
+    .nav-links, .footer-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .nav-links a, .footer-links a, .inline-link {
+      color: var(--accent-strong);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .nav-links a:hover, .footer-links a:hover, .inline-link:hover {
+      text-decoration: underline;
+    }
+    .page {
+      padding: 36px;
+      display: grid;
+      gap: 18px;
+    }
+    .eyebrow {
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.8rem;
+      letter-spacing: 0.13em;
+    }
+    h1 {
+      font-size: clamp(2.2rem, 6vw, 4.4rem);
+      line-height: 0.95;
+      margin: 8px 0 8px;
+      letter-spacing: -0.05em;
+      max-width: 12ch;
+    }
+    h2 {
+      margin: 12px 0 8px;
+      font-size: 1.2rem;
+    }
+    p, li {
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 1rem;
+    }
+    ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .lead {
+      max-width: 70ch;
+      margin: 0;
+    }
+    .content-grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .card {
+      padding: 20px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      display: grid;
+      gap: 10px;
+    }
+    pre {
+      margin: 0;
+      padding: 14px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: auto;
+      font-size: 0.94rem;
+    }
+    code {
+      font-family: "IBM Plex Mono", monospace;
+    }
+    .site-footer {
+      padding: 24px 28px 28px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 10px;
+      background: rgba(255,255,255,0.52);
+    }
+    .footer-copy {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    @media (max-width: 860px) {
+      .site-nav {
+        align-items: start;
+        flex-direction: column;
+      }
+      .page {
+        padding: 24px;
+      }
+    }
+    "#
+}
+
+fn render_footer_html() -> String {
+    format!(
+        r#"<footer class="site-footer">
+  <div class="footer-links">
+    <a href="/help">Help</a>
+    <a href="/terms">Terms</a>
+    <a href="/privacy">Privacy</a>
+    <a href="{repo}" target="_blank" rel="noreferrer">Repository</a>
+    <a href="{crate_url}" target="_blank" rel="noreferrer">Rust Crate</a>
+  </div>
+  <div class="footer-copy">
+    hashavatar.app is a deterministic avatar API and demo service built on the open-source <code>hashavatar</code> Rust crate.
+  </div>
+</footer>"#,
+        repo = REPOSITORY_URL,
+        crate_url = CRATE_URL,
+    )
+}
+
+fn escape_html_attribute(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn render_meta_tags(title: &str, description: &str, path: &str) -> String {
+    let canonical = if path == "/" {
+        format!("{SITE_URL}/")
+    } else {
+        format!("{SITE_URL}{path}")
+    };
+    let preview_image = format!(
+        "{site}/v1/avatar?id=hashavatar.app&kind=monster&background=themed&format=png&size=512",
+        site = SITE_URL
+    );
+    let full_title = format!("{title} · {SITE_NAME}");
+
+    format!(
+        r#"<title>{title}</title>
+  <meta name="description" content="{description}" />
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+  <link rel="canonical" href="{canonical}" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="{site_name}" />
+  <meta property="og:title" content="{title}" />
+  <meta property="og:description" content="{description}" />
+  <meta property="og:url" content="{canonical}" />
+  <meta property="og:image" content="{image}" />
+  <meta property="og:image:alt" content="Procedural avatar preview from hashavatar.app" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{title}" />
+  <meta name="twitter:description" content="{description}" />
+  <meta name="twitter:image" content="{image}" />"#,
+        title = escape_html_attribute(&full_title),
+        description = escape_html_attribute(description),
+        canonical = escape_html_attribute(&canonical),
+        image = escape_html_attribute(&preview_image),
+        site_name = escape_html_attribute(SITE_NAME),
+    )
+}
+
+fn render_page_html(
+    page_title: &str,
+    description: &str,
+    path: &str,
+    eyebrow: &str,
+    lead: &str,
+    body: &str,
+) -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  {meta_tags}
+  <style>{styles}</style>
+</head>
+<body>
+  <main>
+    <div class="site-nav">
+      <a class="brand" href="/">{site_name}</a>
+      <div class="nav-links">
+        <a href="/help">Help</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+        <a href="{repo}" target="_blank" rel="noreferrer">Repository</a>
+        <a href="{crate_url}" target="_blank" rel="noreferrer">Rust Crate</a>
+      </div>
+    </div>
+    <section class="page">
+      <div class="eyebrow">{eyebrow}</div>
+      <h1>{page_title}</h1>
+      <p class="lead">{lead}</p>
+      {body}
+    </section>
+    {footer}
+  </main>
+</body>
+</html>"#,
+        meta_tags = render_meta_tags(page_title, description, path),
+        styles = shared_page_styles(),
+        site_name = SITE_NAME,
+        eyebrow = eyebrow,
+        page_title = page_title,
+        lead = lead,
+        body = body,
+        footer = render_footer_html(),
+        repo = REPOSITORY_URL,
+        crate_url = CRATE_URL,
+    )
+}
+
+fn render_index_html() -> String {
+    let description = "Deterministic procedural avatars for emails, usernames, and internal ids. Generate cat, dog, robot, fox, alien, and monster avatars as WebP, PNG, or SVG.";
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  {meta_tags}
+  <style>
+    {styles}
     .hero {{
       display: grid;
       grid-template-columns: 1.1fr 0.9fr;
@@ -536,6 +813,16 @@ fn render_index_html() -> String {
 </head>
 <body>
   <main>
+    <div class="site-nav">
+      <a class="brand" href="/">hashavatar.app</a>
+      <div class="nav-links">
+        <a href="/help">Help</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+        <a href="{repo}" target="_blank" rel="noreferrer">Repository</a>
+        <a href="{crate_url}" target="_blank" rel="noreferrer">Rust Crate</a>
+      </div>
+    </div>
     <section class="hero">
       <div class="copy">
         <div class="eyebrow">hashavatar.app</div>
@@ -655,6 +942,7 @@ fn render_index_html() -> String {
         </div>
       </div>
     </section>
+    {footer}
   </main>
   <script>
     const identityEl = document.getElementById("identity");
@@ -762,7 +1050,145 @@ fn render_index_html() -> String {
   </script>
 </body>
 </html>"#,
-        id = DEFAULT_ID
+        id = DEFAULT_ID,
+        meta_tags = render_meta_tags("Public Avatar API", description, "/"),
+        styles = shared_page_styles(),
+        footer = render_footer_html(),
+        repo = REPOSITORY_URL,
+        crate_url = CRATE_URL,
+    )
+}
+
+fn render_help_html() -> String {
+    render_page_html(
+        "Help",
+        "Integration guide for using the hashavatar.app avatar API in web apps, frontends, and backends.",
+        "/help",
+        "Integration Guide",
+        "Use hashavatar.app directly from the browser, your frontend, or your backend. Every avatar URL is deterministic, so the same identifier and options always produce the same result.",
+        &format!(
+            r#"
+<div class="content-grid">
+  <section class="card">
+    <h2>Basic URL</h2>
+    <p>Use the query endpoint when you want a simple public image URL.</p>
+    <pre><code>https://{site}/v1/avatar?id=alice@example.com&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+  </section>
+  <section class="card">
+    <h2>Path Style URL</h2>
+    <p>Use the path form if you prefer cleaner embed URLs.</p>
+    <pre><code>https://{site}/avatar/fox/alice@example.com/svg</code></pre>
+  </section>
+  <section class="card">
+    <h2>HTML Example</h2>
+    <pre><code>&lt;img
+  src="https://{site}/v1/avatar?id=alice@example.com&amp;kind=monster&amp;background=themed&amp;format=webp&amp;size=256"
+  alt="Alice avatar"
+/&gt;</code></pre>
+  </section>
+  <section class="card">
+    <h2>JavaScript Example</h2>
+    <pre><code>const avatarUrl = new URL("https://{site}/v1/avatar");
+avatarUrl.search = new URLSearchParams({{
+  id: user.email,
+  kind: "robot",
+  background: "white",
+  format: "webp",
+  size: "256",
+}}).toString();</code></pre>
+  </section>
+</div>
+<section class="card">
+  <h2>Supported Parameters</h2>
+  <ul>
+    <li><code>id</code>: any stable identifier such as an email, username, or internal user id</li>
+    <li><code>kind</code>: <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>fox</code>, <code>alien</code>, or <code>monster</code></li>
+    <li><code>background</code>: <code>themed</code> or <code>white</code></li>
+    <li><code>format</code>: <code>webp</code>, <code>png</code>, or <code>svg</code></li>
+    <li><code>size</code>: from <code>64</code> up to <code>1024</code></li>
+  </ul>
+</section>
+<section class="card">
+  <h2>Signed Storage Links</h2>
+  <p>If this deployment has object storage configured, request a presigned storage link from <code>/v1/avatar/link</code>. That endpoint stores the generated object and returns JSON with the signed URL and object key.</p>
+  <pre><code>GET https://{site}/v1/avatar/link?id=alice@example.com&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+</section>
+<section class="card">
+  <h2>Open Source</h2>
+  <p>The public site source lives in <a class="inline-link" href="{repo}" target="_blank" rel="noreferrer">the repository</a> and the reusable rendering crate is published on <a class="inline-link" href="{crate_url}" target="_blank" rel="noreferrer">crates.io</a>.</p>
+</section>
+"#,
+            site = SITE_NAME,
+            repo = REPOSITORY_URL,
+            crate_url = CRATE_URL,
+        ),
+    )
+}
+
+fn render_terms_html() -> String {
+    render_page_html(
+        "Terms",
+        "Best-effort service terms for the public hashavatar.app avatar API and demo website.",
+        "/terms",
+        "Service Terms",
+        "This public service is provided on an informational and best-effort basis. Use it only if that risk profile works for your application.",
+        r#"
+<section class="card">
+  <h2>No Warranty</h2>
+  <p>This service and all generated outputs are provided as-is and as-available, without warranties of any kind, whether express or implied. We do not promise availability, correctness, fitness for a particular purpose, uninterrupted operation, or compatibility with your systems.</p>
+</section>
+<section class="card">
+  <h2>No Liability</h2>
+  <p>We are not responsible for downtime, outages, degraded performance, broken links, cache behavior, lost data, corrupted objects, third-party provider failures, or any direct or indirect damages arising from your use of the service.</p>
+  <p>If you depend on these avatars in production, you should implement your own fallback behavior, caching strategy, and availability plan.</p>
+</section>
+<section class="card">
+  <h2>Acceptable Use</h2>
+  <p>Do not use the service to overload the infrastructure, bypass rate limits or cache controls, test abusive traffic patterns, or store illegal material through any persistence feature.</p>
+</section>
+<section class="card">
+  <h2>Changes</h2>
+  <p>We may change, limit, suspend, or discontinue the public service at any time and without notice. Public endpoints, output details, or operational limits may change as the service evolves.</p>
+  <p>This page is operational guidance, not legal advice. If you need formal legal terms for a business deployment, you should publish a reviewed version specific to your jurisdiction and operator entity.</p>
+</section>
+"#,
+    )
+}
+
+fn render_privacy_html() -> String {
+    render_page_html(
+        "Privacy",
+        "Privacy notice for hashavatar.app covering request data, logs, and optional object storage behavior.",
+        "/privacy",
+        "Privacy Notice",
+        "The service is intentionally simple, but a public avatar API still receives some request data in order to function. This page describes that practical baseline.",
+        r#"
+<section class="card">
+  <h2>What The Service Receives</h2>
+  <ul>
+    <li>the identifier you put in the request, such as an email address or username</li>
+    <li>request parameters such as avatar type, size, format, and background</li>
+    <li>standard HTTP metadata handled by the server, reverse proxy, and CDN, such as IP address, user agent, referrer, and request timing</li>
+  </ul>
+</section>
+<section class="card">
+  <h2>What The App Itself Stores</h2>
+  <p>The application does not require user accounts and does not set application cookies by default. In the basic request flow it generates the avatar on demand and returns it directly.</p>
+  <p>If object storage support is enabled and a signed-link or persistence route is used, the generated avatar file and its object key may be stored in the configured S3-compatible bucket.</p>
+</section>
+<section class="card">
+  <h2>Logging And Infrastructure</h2>
+  <p>Depending on deployment, infrastructure components such as nginx, Caddy, Cloudflare, hosting providers, or S3-compatible storage may keep access logs and operational metadata. Those logs are part of running a public service and may contain the identifier you requested if it appears in the URL.</p>
+</section>
+<section class="card">
+  <h2>What To Avoid Sending</h2>
+  <p>If you do not want personal data to appear in logs or URLs, do not send raw personal data as the <code>id</code> value. A common pattern is to send an internal stable id or a one-way application hash instead of a plain email address.</p>
+</section>
+<section class="card">
+  <h2>Repository And Crate</h2>
+  <p>You can inspect the implementation in the public <a class="inline-link" href="https://repoheim.eu/valkyoth/hashavatar-api" target="_blank" rel="noreferrer">API repository</a> and the reusable avatar renderer in the <a class="inline-link" href="https://crates.io/crates/hashavatar/" target="_blank" rel="noreferrer">Rust crate</a>.</p>
+</section>
+"#,
     )
 }
 

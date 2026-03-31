@@ -853,9 +853,9 @@ dependencies = [
 
 [[package]]
 name = "hashavatar"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8db63d83eca2c56467c87f8f3ee273f1cfff1e35135a88b33e8701c1fd57be23"
+checksum = "48ea34c849cad8af0f881ace56c613a80c6c487384f0ceef6d46508e7209b49a"
 dependencies = [
  "axum",
  "image",
@@ -868,7 +868,7 @@ dependencies = [
 
 [[package]]
 name = "hashavatar-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aws-config",
  "aws-sdk-s3",

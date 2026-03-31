@@ -1,18 +1,18 @@
-FROM rust:1.94 as build
+FROM rust:1.94 AS build
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-COPY public-website/Cargo.toml ./public-website/Cargo.toml
-COPY public-website/src ./public-website/src
 
-WORKDIR /app/public-website
 RUN cargo build --release
 
 FROM debian:bookworm-slim
-RUN useradd --system --create-home appuser
+RUN useradd --system --create-home --uid 10001 appuser
 WORKDIR /app
-COPY --from=build /app/public-website/target/release/hashavatar-api /usr/local/bin/hashavatar-api
-USER appuser
+
+COPY --from=build /app/target/release/hashavatar-api /usr/local/bin/hashavatar-api
+
+ENV PORT=8080
 EXPOSE 8080
+USER appuser
 CMD ["hashavatar-api"]

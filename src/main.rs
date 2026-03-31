@@ -562,6 +562,7 @@ fn render_index_html() -> String {
                 <option value="robot">Robot</option>
                 <option value="fox">Fox</option>
                 <option value="alien" selected>Alien</option>
+                <option value="monster">Monster</option>
               </select>
             </div>
             <div>
@@ -589,6 +590,7 @@ fn render_index_html() -> String {
                 <option value="256" selected>256</option>
                 <option value="320">320</option>
                 <option value="512">512</option>
+                <option value="1024">1024</option>
               </select>
             </div>
           </div>
@@ -644,6 +646,10 @@ fn render_index_html() -> String {
             <button class="example-card" data-id="space-user" data-kind="alien" data-background="themed" data-format="svg" data-size="320">
               <img src="/v1/avatar?id=space-user&kind=alien&background=themed&format=webp&size=160" alt="Alien preset" />
               <div class="example-title">Alien preset</div>
+            </button>
+            <button class="example-card" data-id="cryptid-lab" data-kind="monster" data-background="themed" data-format="webp" data-size="512">
+              <img src="/v1/avatar?id=cryptid-lab&kind=monster&background=themed&format=webp&size=160" alt="Monster preset" />
+              <div class="example-title">Monster preset</div>
             </button>
           </div>
         </div>

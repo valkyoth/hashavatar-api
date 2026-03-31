@@ -1,7 +1,9 @@
 use std::net::SocketAddr;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use aws_config::{BehaviorVersion, Region};
 use aws_sdk_s3::config::Builder as S3ConfigBuilder;
@@ -14,9 +16,11 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use hashavatar::{
-    AvatarBackground, AvatarKind, AvatarOptions, AvatarOutputFormat, AvatarSpec,
-    encode_avatar_for_id, render_avatar_svg_for_id,
+    AVATAR_STYLE_VERSION, AvatarBackground, AvatarKind, AvatarNamespace, AvatarOptions,
+    AvatarOutputFormat, AvatarSpec, encode_avatar_for_namespace, render_avatar_for_namespace,
+    render_avatar_svg_for_namespace,
 };
+use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -27,12 +31,27 @@ const SITE_NAME: &str = "hashavatar.app";
 const SITE_URL: &str = "https://hashavatar.app";
 const REPOSITORY_URL: &str = "https://repoheim.eu/valkyoth/hashavatar-api";
 const CRATE_URL: &str = "https://crates.io/crates/hashavatar/";
+const DEFAULT_NAMESPACE_TENANT: &str = "public";
+const DEFAULT_NAMESPACE_STYLE: &str = "v2";
+const AVATAR_TIMEOUT_MS: u64 = 3_000;
+const STORAGE_TIMEOUT_MS: u64 = 5_000;
 const MIN_SIZE: u32 = 64;
 const MAX_SIZE: u32 = 1024;
 
-#[derive(Clone)]
 struct AppState {
     storage: Option<Arc<S3Storage>>,
+    rate_limiter: RateLimiter,
+    metrics: Metrics,
+}
+
+impl Clone for AppState {
+    fn clone(&self) -> Self {
+        Self {
+            storage: self.storage.clone(),
+            rate_limiter: self.rate_limiter.clone(),
+            metrics: self.metrics.clone(),
+        }
+    }
 }
 
 #[tokio::main]
@@ -46,15 +65,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = AppState {
         storage: S3Storage::from_env().await?.map(Arc::new),
+        rate_limiter: RateLimiter::default(),
+        metrics: Metrics::default(),
     };
 
     let app = Router::new()
         .route("/", get(index))
         .route("/help", get(help_page))
+        .route("/docs", get(docs_page))
+        .route("/docs/openapi.json", get(openapi_json))
         .route("/terms", get(terms_page))
         .route("/privacy", get(privacy_page))
         .route("/robots.txt", get(robots_txt))
         .route("/sitemap.xml", get(sitemap_xml))
+        .route("/favicon.svg", get(favicon_svg))
+        .route("/site.webmanifest", get(site_webmanifest))
+        .route("/og.png", get(og_png))
+        .route("/metrics", get(metrics_json))
         .route("/healthz", get(healthz))
         .route("/v1/avatar", get(query_avatar))
         .route("/v1/avatar/link", get(query_avatar_link))
@@ -73,6 +100,10 @@ async fn index() -> Html<String> {
 
 async fn help_page() -> Html<String> {
     Html(render_help_html())
+}
+
+async fn docs_page() -> Html<String> {
+    Html(render_docs_html())
 }
 
 async fn terms_page() -> Html<String> {
@@ -109,19 +140,326 @@ async fn sitemap_xml() -> impl IntoResponse {
     )
 }
 
+async fn favicon_svg() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "image/svg+xml; charset=utf-8")],
+        format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#f7f0e6"/><ellipse cx="32" cy="34" rx="18" ry="16" fill="#8d4dcb"/><polygon points="20,25 24,10 30,24" fill="#4c2d68"/><polygon points="44,25 40,10 34,24" fill="#4c2d68"/><ellipse cx="25" cy="31" rx="4" ry="5" fill="#fcf8ec"/><ellipse cx="39" cy="31" rx="4" ry="5" fill="#fcf8ec"/><ellipse cx="25" cy="31" rx="2" ry="3" fill="#18141c"/><ellipse cx="39" cy="31" rx="2" ry="3" fill="#18141c"/><rect x="22" y="40" width="20" height="5" rx="2" fill="#301218"/></svg>"##
+        ),
+    )
+}
+
+async fn site_webmanifest() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/manifest+json; charset=utf-8")],
+        Json(serde_json::json!({
+            "name": SITE_NAME,
+            "short_name": "hashavatar",
+            "start_url": "/",
+            "display": "standalone",
+            "background_color": "#fbf6ee",
+            "theme_color": "#d97a42",
+            "icons": [{
+                "src": "/favicon.svg",
+                "sizes": "64x64",
+                "type": "image/svg+xml",
+                "purpose": "any"
+            }]
+        })),
+    )
+}
+
+async fn metrics_json(State(state): State<AppState>) -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        Json(state.metrics.snapshot(state.storage.is_some())),
+    )
+}
+
+async fn openapi_json() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "openapi": "3.1.0",
+        "info": {
+            "title": "hashavatar.app API",
+            "version": AVATAR_STYLE_VERSION.to_string(),
+            "description": "Public procedural avatar API"
+        },
+        "servers": [{ "url": SITE_URL }],
+        "paths": {
+            "/v1/avatar": {
+                "get": {
+                    "summary": "Generate an avatar",
+                    "parameters": [
+                        {"name":"id","in":"query","schema":{"type":"string"}},
+                        {"name":"tenant","in":"query","schema":{"type":"string"}},
+                        {"name":"style_version","in":"query","schema":{"type":"string"}},
+                        {"name":"kind","in":"query","schema":{"type":"string","enum": AvatarKind::ALL.map(|kind| kind.as_str())}},
+                        {"name":"background","in":"query","schema":{"type":"string","enum":["themed","white"]}},
+                        {"name":"format","in":"query","schema":{"type":"string","enum":["webp","png","svg"]}},
+                        {"name":"size","in":"query","schema":{"type":"integer","minimum": MIN_SIZE, "maximum": MAX_SIZE}}
+                    ],
+                    "responses": {"200":{"description":"Avatar asset"}}
+                }
+            },
+            "/v1/avatar/link": {
+                "get": {
+                    "summary": "Persist to object storage and return a signed link",
+                    "responses": {"200":{"description":"Signed link metadata"}}
+                }
+            },
+            "/avatar/{kind}/{identity}/{format}": {
+                "get": {
+                    "summary": "Path-style avatar URL",
+                    "responses": {"200":{"description":"Avatar asset"}}
+                }
+            },
+            "/metrics": {
+                "get": {
+                    "summary": "Service metrics",
+                    "responses": {"200":{"description":"Metrics JSON"}}
+                }
+            }
+        }
+    }))
+}
+
+async fn og_png(
+    Query(query): Query<OgQuery>,
+) -> Response {
+    let title_id = query.id.unwrap_or_else(|| DEFAULT_ID.to_string());
+    let namespace = AvatarNamespace::new(
+        query.tenant.as_deref().unwrap_or(DEFAULT_NAMESPACE_TENANT),
+        query
+            .style_version
+            .as_deref()
+            .unwrap_or(DEFAULT_NAMESPACE_STYLE),
+    );
+
+    let mut canvas: RgbaImage =
+        ImageBuffer::from_pixel(1200, 630, Rgba([251, 246, 238, 255]));
+    draw_rect(&mut canvas, 0, 0, 1200, 630, Rgba([242, 236, 228, 255]));
+    draw_circle(&mut canvas, 160, 140, 180, Rgba([255, 214, 170, 180]));
+    draw_circle(&mut canvas, 1030, 500, 150, Rgba([217, 122, 66, 70]));
+
+    let lead_kind = query
+        .kind
+        .as_deref()
+        .and_then(|raw| AvatarKind::from_str(raw).ok())
+        .unwrap_or(AvatarKind::Monster);
+    for (idx, kind) in [lead_kind, AvatarKind::Robot, AvatarKind::Ghost]
+        .into_iter()
+        .enumerate()
+    {
+        let avatar = render_avatar_for_namespace(
+            AvatarSpec::new(220, 220, 0),
+            namespace,
+            &title_id,
+            AvatarOptions::new(kind, if idx == 1 { AvatarBackground::White } else { AvatarBackground::Themed }),
+        );
+        overlay(&mut canvas, &avatar, 110 + idx as u32 * 260, 180);
+    }
+
+    let bytes = {
+        use image::ImageEncoder;
+        let mut buf = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut buf)
+            .write_image(
+                canvas.as_raw(),
+                canvas.width(),
+                canvas.height(),
+                image::ExtendedColorType::Rgba8,
+            )
+            .expect("png encode");
+        buf
+    };
+
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "image/png"), (header::CACHE_CONTROL, "public, max-age=86400")],
+        bytes,
+    )
+        .into_response()
+}
+
 async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
     (
         StatusCode::OK,
         Json(serde_json::json!({
             "status": "ok",
             "service": "hashavatar-api",
-            "s3_enabled": state.storage.is_some()
+            "s3_enabled": state.storage.is_some(),
+            "style_version": AVATAR_STYLE_VERSION,
         })),
     )
 }
 
+#[derive(Clone, Copy)]
+enum RateLimitRoute {
+    Avatar,
+    StorageLink,
+}
+
+impl RateLimitRoute {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Avatar => "avatar",
+            Self::StorageLink => "storage-link",
+        }
+    }
+
+    fn limit(self) -> u32 {
+        match self {
+            Self::Avatar => 240,
+            Self::StorageLink => 30,
+        }
+    }
+}
+
+#[derive(Default, Clone)]
+struct RateLimiter {
+    buckets: Arc<Mutex<std::collections::HashMap<String, RateBucket>>>,
+}
+
+#[derive(Clone, Copy)]
+struct RateBucket {
+    started_at: Instant,
+    count: u32,
+}
+
+#[derive(Default, Clone)]
+struct Metrics {
+    requests_total: Arc<AtomicU64>,
+    avatar_rendered_total: Arc<AtomicU64>,
+    avatar_link_total: Arc<AtomicU64>,
+    limited_total: Arc<AtomicU64>,
+    storage_write_total: Arc<AtomicU64>,
+    storage_hit_total: Arc<AtomicU64>,
+    storage_redirect_total: Arc<AtomicU64>,
+    generation_millis_total: Arc<AtomicU64>,
+    format_webp_total: Arc<AtomicU64>,
+    format_png_total: Arc<AtomicU64>,
+    format_svg_total: Arc<AtomicU64>,
+}
+
+#[derive(Serialize)]
+struct MetricsSnapshot {
+    requests_total: u64,
+    avatar_rendered_total: u64,
+    avatar_link_total: u64,
+    limited_total: u64,
+    storage_write_total: u64,
+    storage_hit_total: u64,
+    storage_redirect_total: u64,
+    generation_millis_total: u64,
+    formats: serde_json::Value,
+    s3_enabled: bool,
+}
+
+impl Metrics {
+    fn increment_format(&self, format: &str) {
+        match format {
+            "webp" => {
+                self.format_webp_total.fetch_add(1, Ordering::Relaxed);
+            }
+            "png" => {
+                self.format_png_total.fetch_add(1, Ordering::Relaxed);
+            }
+            "svg" => {
+                self.format_svg_total.fetch_add(1, Ordering::Relaxed);
+            }
+            _ => {}
+        }
+    }
+
+    fn observe_generation(&self, duration: Duration) {
+        self.generation_millis_total
+            .fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
+    }
+
+    fn snapshot(&self, s3_enabled: bool) -> MetricsSnapshot {
+        MetricsSnapshot {
+            requests_total: self.requests_total.load(Ordering::Relaxed),
+            avatar_rendered_total: self.avatar_rendered_total.load(Ordering::Relaxed),
+            avatar_link_total: self.avatar_link_total.load(Ordering::Relaxed),
+            limited_total: self.limited_total.load(Ordering::Relaxed),
+            storage_write_total: self.storage_write_total.load(Ordering::Relaxed),
+            storage_hit_total: self.storage_hit_total.load(Ordering::Relaxed),
+            storage_redirect_total: self.storage_redirect_total.load(Ordering::Relaxed),
+            generation_millis_total: self.generation_millis_total.load(Ordering::Relaxed),
+            formats: serde_json::json!({
+                "webp": self.format_webp_total.load(Ordering::Relaxed),
+                "png": self.format_png_total.load(Ordering::Relaxed),
+                "svg": self.format_svg_total.load(Ordering::Relaxed),
+            }),
+            s3_enabled,
+        }
+    }
+}
+
+async fn enforce_limits(
+    state: &AppState,
+    headers: &HeaderMap,
+    route: RateLimitRoute,
+    request: &AvatarRequest,
+) -> Result<(), Response> {
+    let ip = client_ip(headers);
+    let key = format!(
+        "{}:{}:{}:{}",
+        route.as_str(),
+        ip,
+        request.namespace_tenant,
+        request.kind.as_str()
+    );
+    let allowed = state.rate_limiter.check(key, route.limit());
+    if allowed {
+        Ok(())
+    } else {
+        state.metrics.limited_total.fetch_add(1, Ordering::Relaxed);
+        Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate limit exceeded, please retry shortly".to_string(),
+        )
+            .into_response())
+    }
+}
+
+impl RateLimiter {
+    fn check(&self, key: String, limit: u32) -> bool {
+        let now = Instant::now();
+        let mut buckets = self.buckets.lock().expect("rate limiter poisoned");
+        let bucket = buckets.entry(key).or_insert(RateBucket {
+            started_at: now,
+            count: 0,
+        });
+        if now.duration_since(bucket.started_at) >= Duration::from_secs(60) {
+            bucket.started_at = now;
+            bucket.count = 0;
+        }
+        if bucket.count >= limit {
+            return false;
+        }
+        bucket.count += 1;
+        true
+    }
+}
+
+fn client_ip(headers: &HeaderMap) -> String {
+    for header_name in ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"] {
+        if let Some(value) = headers.get(header_name).and_then(|value| value.to_str().ok()) {
+            if let Some(first) = value.split(',').next() {
+                let trimmed = first.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+    }
+    "anonymous".to_string()
+}
+
 async fn query_avatar(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(query): Query<AvatarQuery>,
 ) -> Response {
     let request = match AvatarRequest::from_query(query) {
@@ -129,11 +467,16 @@ async fn query_avatar(
         Err(message) => return bad_request(&message),
     };
 
+    if let Err(response) = enforce_limits(&state, &headers, RateLimitRoute::Avatar, &request).await
+    {
+        return response;
+    }
     serve_avatar(state, request).await
 }
 
 async fn query_avatar_link(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(query): Query<AvatarQuery>,
 ) -> Response {
     let request = match AvatarRequest::from_query(query) {
@@ -141,11 +484,17 @@ async fn query_avatar_link(
         Err(message) => return bad_request(&message),
     };
 
+    if let Err(response) =
+        enforce_limits(&state, &headers, RateLimitRoute::StorageLink, &request).await
+    {
+        return response;
+    }
     serve_avatar_link(state, request).await
 }
 
 async fn path_avatar(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(path): Path<PathAvatar>,
 ) -> Response {
     let kind = match AvatarKind::from_str(&path.kind) {
@@ -159,6 +508,8 @@ async fn path_avatar(
 
     let request = AvatarRequest {
         identity: path.identity,
+        namespace_tenant: DEFAULT_NAMESPACE_TENANT.to_string(),
+        namespace_style: DEFAULT_NAMESPACE_STYLE.to_string(),
         kind,
         background: AvatarBackground::Themed,
         format,
@@ -167,14 +518,35 @@ async fn path_avatar(
         redirect: false,
     };
 
+    if let Err(response) = enforce_limits(&state, &headers, RateLimitRoute::Avatar, &request).await
+    {
+        return response;
+    }
     serve_avatar(state, request).await
 }
 
 async fn serve_avatar(state: AppState, request: AvatarRequest) -> Response {
-    let asset = match build_avatar_asset(&request) {
-        Ok(asset) => asset,
-        Err(message) => return bad_request(&message),
+    state.metrics.requests_total.fetch_add(1, Ordering::Relaxed);
+    let started = Instant::now();
+    let asset = match tokio::time::timeout(
+        Duration::from_millis(AVATAR_TIMEOUT_MS),
+        async { build_avatar_asset(&request) },
+    )
+    .await
+    {
+        Ok(Ok(asset)) => asset,
+        Ok(Err(message)) => return bad_request(&message),
+        Err(_) => return request_timeout("avatar generation timed out"),
     };
+
+    state
+        .metrics
+        .avatar_rendered_total
+        .fetch_add(1, Ordering::Relaxed);
+    state.metrics.observe_generation(started.elapsed());
+
+    let format_name = request.format.as_str();
+    state.metrics.increment_format(format_name);
 
     let etag = etag_for(&asset.cache_key);
     let mut headers = cache_headers(&etag);
@@ -189,8 +561,13 @@ async fn serve_avatar(state: AppState, request: AvatarRequest) -> Response {
             None => return bad_request("S3 storage is not configured on this server"),
         };
 
-        match storage.store_and_sign(&asset).await {
-            Ok(signed) => {
+        match tokio::time::timeout(
+            Duration::from_millis(STORAGE_TIMEOUT_MS),
+            storage.store_and_sign(&asset, &state.metrics),
+        )
+        .await
+        {
+            Ok(Ok(signed)) => {
                 headers.insert(
                     HeaderName::storage_key(),
                     HeaderValue::from_str(&signed.object_key)
@@ -203,10 +580,15 @@ async fn serve_avatar(state: AppState, request: AvatarRequest) -> Response {
                 );
 
                 if request.redirect {
+                    state
+                        .metrics
+                        .storage_redirect_total
+                        .fetch_add(1, Ordering::Relaxed);
                     return Redirect::temporary(&signed.signed_url).into_response();
                 }
             }
-            Err(error) => return internal_error(error),
+            Ok(Err(error)) => return internal_error(error),
+            Err(_) => return request_timeout("object storage timed out"),
         }
     }
 
@@ -214,18 +596,36 @@ async fn serve_avatar(state: AppState, request: AvatarRequest) -> Response {
 }
 
 async fn serve_avatar_link(state: AppState, request: AvatarRequest) -> Response {
+    state.metrics.requests_total.fetch_add(1, Ordering::Relaxed);
     let storage = match state.storage.as_ref() {
         Some(storage) => storage,
         None => return bad_request("S3 storage is not configured on this server"),
     };
 
-    let asset = match build_avatar_asset(&request) {
-        Ok(asset) => asset,
-        Err(message) => return bad_request(&message),
+    let started = Instant::now();
+    let asset = match tokio::time::timeout(
+        Duration::from_millis(AVATAR_TIMEOUT_MS),
+        async { build_avatar_asset(&request) },
+    )
+    .await
+    {
+        Ok(Ok(asset)) => asset,
+        Ok(Err(message)) => return bad_request(&message),
+        Err(_) => return request_timeout("avatar generation timed out"),
     };
+    state.metrics.observe_generation(started.elapsed());
+    state
+        .metrics
+        .avatar_link_total
+        .fetch_add(1, Ordering::Relaxed);
 
-    match storage.store_and_sign(&asset).await {
-        Ok(signed) => (
+    match tokio::time::timeout(
+        Duration::from_millis(STORAGE_TIMEOUT_MS),
+        storage.store_and_sign(&asset, &state.metrics),
+    )
+    .await
+    {
+        Ok(Ok(signed)) => (
             StatusCode::OK,
             Json(AvatarLinkResponse {
                 object_key: signed.object_key,
@@ -236,7 +636,8 @@ async fn serve_avatar_link(state: AppState, request: AvatarRequest) -> Response 
             }),
         )
             .into_response(),
-        Err(error) => internal_error(error),
+        Ok(Err(error)) => internal_error(error),
+        Err(_) => request_timeout("object storage timed out"),
     }
 }
 
@@ -251,24 +652,31 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
 
     let spec = AvatarSpec::new(request.size, request.size, 0);
     let options = AvatarOptions::new(request.kind, request.background);
+    let namespace = AvatarNamespace::new(&request.namespace_tenant, &request.namespace_style);
     let cache_key = format!(
-        "{}:{}:{}:{}:{}",
-        identity, request.kind, request.background, request.format, request.size
+        "{}:{}:{}:{}:{}:{}:{}",
+        request.namespace_tenant,
+        request.namespace_style,
+        identity,
+        request.kind,
+        request.background,
+        request.format,
+        request.size
     );
 
     let (body, content_type) = match request.format {
         AvatarRequestFormat::Webp => (
-            encode_avatar_for_id(spec, identity, AvatarOutputFormat::WebP, options)
+            encode_avatar_for_namespace(spec, namespace, identity, AvatarOutputFormat::WebP, options)
                 .map_err(|error| format!("avatar generation failed: {error}"))?,
             "image/webp",
         ),
         AvatarRequestFormat::Png => (
-            encode_avatar_for_id(spec, identity, AvatarOutputFormat::Png, options)
+            encode_avatar_for_namespace(spec, namespace, identity, AvatarOutputFormat::Png, options)
                 .map_err(|error| format!("avatar generation failed: {error}"))?,
             "image/png",
         ),
         AvatarRequestFormat::Svg => (
-            render_avatar_svg_for_id(spec, identity, options).into_bytes(),
+            render_avatar_svg_for_namespace(spec, namespace, identity, options).into_bytes(),
             "image/svg+xml",
         ),
     };
@@ -316,8 +724,14 @@ fn etag_for(cache_key: &str) -> String {
 fn object_key_for(request: &AvatarRequest, identity: &str) -> String {
     let digest = Sha256::digest(
         format!(
-            "{}:{}:{}:{}:{}",
-            identity, request.kind, request.background, request.format, request.size
+            "{}:{}:{}:{}:{}:{}:{}",
+            request.namespace_tenant,
+            request.namespace_style,
+            identity,
+            request.kind,
+            request.background,
+            request.format,
+            request.size
         )
         .as_bytes(),
     );
@@ -326,7 +740,9 @@ fn object_key_for(request: &AvatarRequest, identity: &str) -> String {
         encoded.push_str(&format!("{byte:02x}"));
     }
     format!(
-        "{}/{}/{}/{}.{}",
+        "{}/{}/{}/{}/{}/{}.{}",
+        request.namespace_tenant,
+        request.namespace_style,
         request.kind.as_str(),
         request.background.as_str(),
         request.size,
@@ -345,6 +761,37 @@ fn internal_error(error: impl std::fmt::Display) -> Response {
         format!("avatar generation failed: {error}"),
     )
         .into_response()
+}
+
+fn request_timeout(message: &str) -> Response {
+    (StatusCode::REQUEST_TIMEOUT, message.to_string()).into_response()
+}
+
+fn draw_rect(image: &mut RgbaImage, x: u32, y: u32, width: u32, height: u32, color: Rgba<u8>) {
+    for yy in y..(y + height).min(image.height()) {
+        for xx in x..(x + width).min(image.width()) {
+            image.put_pixel(xx, yy, color);
+        }
+    }
+}
+
+fn draw_circle(image: &mut RgbaImage, cx: i32, cy: i32, radius: i32, color: Rgba<u8>) {
+    for y in -radius..=radius {
+        for x in -radius..=radius {
+            if x * x + y * y <= radius * radius {
+                let px = cx + x;
+                let py = cy + y;
+                if px >= 0 && py >= 0 && (px as u32) < image.width() && (py as u32) < image.height()
+                {
+                    image.put_pixel(px as u32, py as u32, color);
+                }
+            }
+        }
+    }
+}
+
+fn overlay(canvas: &mut RgbaImage, image: &RgbaImage, x: u32, y: u32) {
+    let _ = canvas.copy_from(image, x, y);
 }
 
 fn shared_page_styles() -> &'static str {
@@ -497,6 +944,7 @@ fn render_footer_html() -> String {
         r#"<footer class="site-footer">
   <div class="footer-links">
     <a href="/help">Help</a>
+    <a href="/docs">Docs</a>
     <a href="/terms">Terms</a>
     <a href="/privacy">Privacy</a>
     <a href="{repo}" target="_blank" rel="noreferrer">Repository</a>
@@ -526,7 +974,7 @@ fn render_meta_tags(title: &str, description: &str, path: &str) -> String {
         format!("{SITE_URL}{path}")
     };
     let preview_image = format!(
-        "{site}/v1/avatar?id=hashavatar.app&kind=monster&background=themed&format=png&size=512",
+        "{site}/og.png?id=hashavatar.app&kind=monster",
         site = SITE_URL
     );
     let full_title = format!("{title} · {SITE_NAME}");
@@ -536,6 +984,8 @@ fn render_meta_tags(title: &str, description: &str, path: &str) -> String {
   <meta name="description" content="{description}" />
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
   <link rel="canonical" href="{canonical}" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/site.webmanifest" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="{site_name}" />
   <meta property="og:title" content="{title}" />
@@ -546,12 +996,57 @@ fn render_meta_tags(title: &str, description: &str, path: &str) -> String {
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="{title}" />
   <meta name="twitter:description" content="{description}" />
-  <meta name="twitter:image" content="{image}" />"#,
+  <meta name="twitter:image" content="{image}" />
+  {json_ld}"#,
         title = escape_html_attribute(&full_title),
         description = escape_html_attribute(description),
         canonical = escape_html_attribute(&canonical),
         image = escape_html_attribute(&preview_image),
         site_name = escape_html_attribute(SITE_NAME),
+        json_ld = render_json_ld(&full_title, description, &canonical),
+    )
+}
+
+fn render_json_ld(title: &str, description: &str, canonical: &str) -> String {
+    let title = serde_json::to_string(title).unwrap_or_else(|_| "\"hashavatar.app\"".to_string());
+    let description = serde_json::to_string(description)
+        .unwrap_or_else(|_| "\"Deterministic avatar API\"".to_string());
+    let canonical =
+        serde_json::to_string(canonical).unwrap_or_else(|_| format!("\"{SITE_URL}/\""));
+    let site_url = serde_json::to_string(SITE_URL).unwrap_or_else(|_| format!("\"{SITE_URL}\""));
+    let search_target = serde_json::to_string(&format!("{SITE_URL}/?id={{search_term_string}}"))
+        .unwrap_or_else(|_| format!("\"{SITE_URL}/?id={{search_term_string}}\""));
+
+    format!(
+        r#"<script type="application/ld+json">{{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": {title},
+  "url": {site_url},
+  "description": {description},
+  "potentialAction": {{
+    "@type": "SearchAction",
+    "target": {search_target},
+    "query-input": "required name=search_term_string"
+  }}
+}}</script>
+<script type="application/ld+json">{{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": {title},
+  "url": {canonical},
+  "description": {description},
+  "isPartOf": {{
+    "@type": "WebSite",
+    "name": "hashavatar.app",
+    "url": {site_url}
+  }}
+}}</script>"#,
+        title = title,
+        description = description,
+        canonical = canonical,
+        site_url = site_url,
+        search_target = search_target,
     )
 }
 
@@ -578,6 +1073,7 @@ fn render_page_html(
       <a class="brand" href="/">{site_name}</a>
       <div class="nav-links">
         <a href="/help">Help</a>
+        <a href="/docs">Docs</a>
         <a href="/terms">Terms</a>
         <a href="/privacy">Privacy</a>
         <a href="{repo}" target="_blank" rel="noreferrer">Repository</a>
@@ -608,7 +1104,7 @@ fn render_page_html(
 }
 
 fn render_index_html() -> String {
-    let description = "Deterministic procedural avatars for emails, usernames, and internal ids. Generate cat, dog, robot, fox, alien, and monster avatars as WebP, PNG, or SVG.";
+    let description = "Deterministic procedural avatars for emails, usernames, and internal ids. Generate cat, dog, robot, fox, alien, monster, ghost, slime, bird, wizard, skull, and paws avatars as WebP, PNG, or SVG.";
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -768,7 +1264,7 @@ fn render_index_html() -> String {
     }}
     .example-grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 14px;
     }}
     .example-card {{
@@ -807,7 +1303,11 @@ fn render_index_html() -> String {
     @media (max-width: 860px) {{
       .hero {{ grid-template-columns: 1fr; }}
       .copy {{ border-right: 0; border-bottom: 1px solid var(--line); }}
-      .field-grid, .example-grid {{ grid-template-columns: 1fr; }}
+      .field-grid {{ grid-template-columns: 1fr; }}
+      .example-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    }}
+    @media (max-width: 560px) {{
+      .example-grid {{ grid-template-columns: 1fr; }}
     }}
   </style>
 </head>
@@ -817,6 +1317,7 @@ fn render_index_html() -> String {
       <a class="brand" href="/">hashavatar.app</a>
       <div class="nav-links">
         <a href="/help">Help</a>
+        <a href="/docs">Docs</a>
         <a href="/terms">Terms</a>
         <a href="/privacy">Privacy</a>
         <a href="{repo}" target="_blank" rel="noreferrer">Repository</a>
@@ -831,12 +1332,26 @@ fn render_index_html() -> String {
           Turn any email, username, or stable identifier into a deterministic avatar URL.
           Choose the style, background, output format, and size, then copy the URL, download the result, or create a signed object-storage link.
         </p>
+        <p>
+          Privacy-conscious integration tip: avoid sending raw emails when you do not need to. Hash or namespace your internal ids client-side and use <code>tenant</code> plus <code>style_version</code> for separation.
+        </p>
 
         <div class="generator">
           <div class="field-grid full">
             <div>
               <label for="identity">Identity</label>
               <input id="identity" type="text" value="{id}" placeholder="you@example.com" spellcheck="false" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="field-grid">
+            <div>
+              <label for="tenant">Namespace Tenant</label>
+              <input id="tenant" type="text" value="{tenant}" placeholder="public" spellcheck="false" autocomplete="off" />
+            </div>
+            <div>
+              <label for="style-version">Style Version</label>
+              <input id="style-version" type="text" value="{style_version}" placeholder="v2" spellcheck="false" autocomplete="off" />
             </div>
           </div>
 
@@ -850,6 +1365,12 @@ fn render_index_html() -> String {
                 <option value="fox">Fox</option>
                 <option value="alien" selected>Alien</option>
                 <option value="monster">Monster</option>
+                <option value="ghost">Ghost</option>
+                <option value="slime">Slime</option>
+                <option value="bird">Bird</option>
+                <option value="wizard">Wizard</option>
+                <option value="skull">Skull</option>
+                <option value="paws">Paws</option>
               </select>
             </div>
             <div>
@@ -898,6 +1419,11 @@ fn render_index_html() -> String {
             <div class="url-label">Signed Storage Link</div>
             <div id="signed-url" class="url-text">Enable S3 configuration on the server to use signed links.</div>
           </div>
+
+          <div class="url-panel">
+            <div class="url-label">Machine-Readable API</div>
+            <div class="url-text"><a class="inline-link" href="/docs/openapi.json">/docs/openapi.json</a> and <a class="inline-link" href="/metrics">/metrics</a></div>
+          </div>
         </div>
       </div>
 
@@ -914,29 +1440,53 @@ fn render_index_html() -> String {
 
         <div class="examples" style="width:100%;">
           <div class="example-grid">
-            <button class="example-card" data-id="alice@example.com" data-kind="cat" data-background="themed" data-format="webp" data-size="256">
+            <button type="button" class="example-card" data-id="alice@example.com" data-kind="cat" data-background="themed" data-format="webp" data-size="256">
               <img src="/v1/avatar?id=alice@example.com&kind=cat&background=themed&format=webp&size=160" alt="Cat preset" />
               <div class="example-title">Cat preset</div>
             </button>
-            <button class="example-card" data-id="barkley@hashavatar.app" data-kind="dog" data-background="white" data-format="webp" data-size="256">
+            <button type="button" class="example-card" data-id="barkley@hashavatar.app" data-kind="dog" data-background="white" data-format="webp" data-size="256">
               <img src="/v1/avatar?id=barkley@hashavatar.app&kind=dog&background=white&format=webp&size=160" alt="Dog preset" />
               <div class="example-title">Dog preset</div>
             </button>
-            <button class="example-card" data-id="buildbot-42" data-kind="robot" data-background="white" data-format="png" data-size="256">
+            <button type="button" class="example-card" data-id="buildbot-42" data-kind="robot" data-background="white" data-format="png" data-size="256">
               <img src="/v1/avatar?id=buildbot-42&kind=robot&background=white&format=webp&size=160" alt="Robot preset" />
               <div class="example-title">Robot preset</div>
             </button>
-            <button class="example-card" data-id="ember-forest" data-kind="fox" data-background="themed" data-format="webp" data-size="256">
+            <button type="button" class="example-card" data-id="ember-forest" data-kind="fox" data-background="themed" data-format="webp" data-size="256">
               <img src="/v1/avatar?id=ember-forest&kind=fox&background=themed&format=webp&size=160" alt="Fox preset" />
               <div class="example-title">Fox preset</div>
             </button>
-            <button class="example-card" data-id="space-user" data-kind="alien" data-background="themed" data-format="svg" data-size="320">
+            <button type="button" class="example-card" data-id="space-user" data-kind="alien" data-background="themed" data-format="svg" data-size="320">
               <img src="/v1/avatar?id=space-user&kind=alien&background=themed&format=webp&size=160" alt="Alien preset" />
               <div class="example-title">Alien preset</div>
             </button>
-            <button class="example-card" data-id="cryptid-lab" data-kind="monster" data-background="themed" data-format="webp" data-size="512">
+            <button type="button" class="example-card" data-id="cryptid-lab" data-kind="monster" data-background="themed" data-format="webp" data-size="512">
               <img src="/v1/avatar?id=cryptid-lab&kind=monster&background=themed&format=webp&size=160" alt="Monster preset" />
               <div class="example-title">Monster preset</div>
+            </button>
+            <button type="button" class="example-card" data-id="boo@hashavatar.app" data-kind="ghost" data-background="themed" data-format="webp" data-size="256">
+              <img src="/v1/avatar?id=boo@hashavatar.app&kind=ghost&background=themed&format=webp&size=160" alt="Ghost preset" />
+              <div class="example-title">Ghost preset</div>
+            </button>
+            <button type="button" class="example-card" data-id="gel-cube" data-kind="slime" data-background="white" data-format="png" data-size="256">
+              <img src="/v1/avatar?id=gel-cube&kind=slime&background=white&format=webp&size=160" alt="Slime preset" />
+              <div class="example-title">Slime preset</div>
+            </button>
+            <button type="button" class="example-card" data-id="swift-feather" data-kind="bird" data-background="themed" data-format="webp" data-size="256">
+              <img src="/v1/avatar?id=swift-feather&kind=bird&background=themed&format=webp&size=160" alt="Bird preset" />
+              <div class="example-title">Bird preset</div>
+            </button>
+            <button type="button" class="example-card" data-id="merlin-core" data-kind="wizard" data-background="white" data-format="svg" data-size="320">
+              <img src="/v1/avatar?id=merlin-core&kind=wizard&background=white&format=webp&size=160" alt="Wizard preset" />
+              <div class="example-title">Wizard preset</div>
+            </button>
+            <button type="button" class="example-card" data-id="ossuary" data-kind="skull" data-background="themed" data-format="webp" data-size="256">
+              <img src="/v1/avatar?id=ossuary&kind=skull&background=themed&format=webp&size=160" alt="Skull preset" />
+              <div class="example-title">Skull preset</div>
+            </button>
+            <button type="button" class="example-card" data-id="mittens-club" data-kind="paws" data-background="white" data-format="png" data-size="256">
+              <img src="/v1/avatar?id=mittens-club&kind=paws&background=white&format=webp&size=160" alt="Paws preset" />
+              <div class="example-title">Paws preset</div>
             </button>
           </div>
         </div>
@@ -946,6 +1496,8 @@ fn render_index_html() -> String {
   </main>
   <script>
     const identityEl = document.getElementById("identity");
+    const tenantEl = document.getElementById("tenant");
+    const styleVersionEl = document.getElementById("style-version");
     const kindEl = document.getElementById("kind");
     const backgroundEl = document.getElementById("background");
     const formatEl = document.getElementById("format");
@@ -965,6 +1517,8 @@ fn render_index_html() -> String {
     function currentUrl() {{
       const query = new URLSearchParams({{
         id: currentIdentity(),
+        tenant: tenantEl.value.trim() || "{tenant}",
+        style_version: styleVersionEl.value.trim() || "{style_version}",
         kind: kindEl.value,
         background: backgroundEl.value,
         format: formatEl.value,
@@ -976,6 +1530,8 @@ fn render_index_html() -> String {
     function currentSignedUrlEndpoint() {{
       const query = new URLSearchParams({{
         id: currentIdentity(),
+        tenant: tenantEl.value.trim() || "{tenant}",
+        style_version: styleVersionEl.value.trim() || "{style_version}",
         kind: kindEl.value,
         background: backgroundEl.value,
         format: formatEl.value,
@@ -1030,7 +1586,7 @@ fn render_index_html() -> String {
     copyButton.addEventListener("click", () => copyText(`${{window.location.origin}}${{currentUrl()}}`, copyButton, "Copy URL", "Copied"));
     copySignedButton.addEventListener("click", () => copyText(signedUrlEl.textContent, copySignedButton, "Copy Signed Link", "Copied"));
 
-    [identityEl, kindEl, backgroundEl, formatEl, sizeEl].forEach((el) => {{
+    [identityEl, tenantEl, styleVersionEl, kindEl, backgroundEl, formatEl, sizeEl].forEach((el) => {{
       el.addEventListener("input", refresh);
       el.addEventListener("change", refresh);
     }});
@@ -1038,6 +1594,8 @@ fn render_index_html() -> String {
     document.querySelectorAll(".example-card").forEach((card) => {{
       card.addEventListener("click", () => {{
         identityEl.value = card.dataset.id;
+        tenantEl.value = "{tenant}";
+        styleVersionEl.value = "{style_version}";
         kindEl.value = card.dataset.kind;
         backgroundEl.value = card.dataset.background;
         formatEl.value = card.dataset.format;
@@ -1051,6 +1609,8 @@ fn render_index_html() -> String {
 </body>
 </html>"#,
         id = DEFAULT_ID,
+        tenant = DEFAULT_NAMESPACE_TENANT,
+        style_version = DEFAULT_NAMESPACE_STYLE,
         meta_tags = render_meta_tags("Public Avatar API", description, "/"),
         styles = shared_page_styles(),
         footer = render_footer_html(),
@@ -1102,7 +1662,9 @@ avatarUrl.search = new URLSearchParams({{
   <h2>Supported Parameters</h2>
   <ul>
     <li><code>id</code>: any stable identifier such as an email, username, or internal user id</li>
-    <li><code>kind</code>: <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>fox</code>, <code>alien</code>, or <code>monster</code></li>
+    <li><code>tenant</code>: optional namespace partition for multi-tenant apps</li>
+    <li><code>style_version</code>: optional style namespace such as <code>v2</code></li>
+    <li><code>kind</code>: <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>fox</code>, <code>alien</code>, <code>monster</code>, <code>ghost</code>, <code>slime</code>, <code>bird</code>, <code>wizard</code>, <code>skull</code>, or <code>paws</code></li>
     <li><code>background</code>: <code>themed</code> or <code>white</code></li>
     <li><code>format</code>: <code>webp</code>, <code>png</code>, or <code>svg</code></li>
     <li><code>size</code>: from <code>64</code> up to <code>1024</code></li>
@@ -1121,6 +1683,64 @@ avatarUrl.search = new URLSearchParams({{
             site = SITE_NAME,
             repo = REPOSITORY_URL,
             crate_url = CRATE_URL,
+        ),
+    )
+}
+
+fn render_docs_html() -> String {
+    render_page_html(
+        "Docs",
+        "Reference documentation for the hashavatar.app public avatar API, storage link endpoint, metrics, and namespace-aware identity contract.",
+        "/docs",
+        "API Reference",
+        "This is the product-facing reference for the public API. The same identity, tenant, style version, kind, background, size, and format are intended to remain stable within a major release.",
+        &format!(
+            r#"
+<section class="card">
+  <h2>Core Endpoints</h2>
+  <ul>
+    <li><code>GET /v1/avatar</code>: returns an avatar asset directly</li>
+    <li><code>GET /v1/avatar/link</code>: stores the generated avatar in configured object storage and returns signed-link metadata</li>
+    <li><code>GET /avatar/&lt;kind&gt;/&lt;identity&gt;/&lt;format&gt;</code>: path-style public avatar URL</li>
+    <li><code>GET /docs/openapi.json</code>: machine-readable API description</li>
+    <li><code>GET /metrics</code>: basic runtime counters</li>
+  </ul>
+</section>
+<div class="content-grid">
+  <section class="card">
+    <h2>Namespace Support</h2>
+    <p>Use <code>tenant</code> and <code>style_version</code> to keep visual identity spaces separate between products or rollout phases.</p>
+    <pre><code>GET https://{site}/v1/avatar?id=user-42&amp;tenant=acme&amp;style_version=v2&amp;kind=wizard&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+  </section>
+  <section class="card">
+    <h2>Anonymous IDs</h2>
+    <p>Prefer sending an internal stable id or a one-way application hash instead of a raw email when privacy matters.</p>
+    <pre><code>id = sha256(lowercase(email))</code></pre>
+  </section>
+  <section class="card">
+    <h2>Rate Limits</h2>
+    <p>The public service applies origin-side rate limits, with stricter limits on <code>/v1/avatar/link</code> because object storage writes are more expensive than direct rendering.</p>
+  </section>
+  <section class="card">
+    <h2>Timeouts</h2>
+    <p>Avatar generation and storage operations are bounded by server-side timeouts so expensive requests cannot monopolize the origin indefinitely.</p>
+  </section>
+</div>
+<section class="card">
+  <h2>Errors</h2>
+  <ul>
+    <li><code>400</code>: invalid kind, format, size, or missing identity</li>
+    <li><code>408</code>: generation or storage timeout</li>
+    <li><code>429</code>: rate limit exceeded</li>
+    <li><code>500</code>: rendering or storage failure</li>
+  </ul>
+</section>
+<section class="card">
+  <h2>OpenAPI</h2>
+  <p>For generated clients or tooling, use <a class="inline-link" href="/docs/openapi.json">/docs/openapi.json</a>.</p>
+</section>
+"#,
+            site = SITE_NAME,
         ),
     )
 }
@@ -1193,12 +1813,22 @@ fn render_privacy_html() -> String {
 }
 
 #[derive(Debug, Deserialize)]
+struct OgQuery {
+    id: Option<String>,
+    tenant: Option<String>,
+    style_version: Option<String>,
+    kind: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct AvatarQuery {
     id: Option<String>,
     kind: Option<String>,
     background: Option<String>,
     format: Option<String>,
     size: Option<u32>,
+    tenant: Option<String>,
+    style_version: Option<String>,
     persist: Option<bool>,
     redirect: Option<bool>,
 }
@@ -1249,6 +1879,8 @@ impl FromStr for AvatarRequestFormat {
 #[derive(Debug)]
 struct AvatarRequest {
     identity: String,
+    namespace_tenant: String,
+    namespace_style: String,
     kind: AvatarKind,
     background: AvatarBackground,
     format: AvatarRequestFormat,
@@ -1261,6 +1893,14 @@ impl AvatarRequest {
     fn from_query(query: AvatarQuery) -> Result<Self, String> {
         Ok(Self {
             identity: query.id.unwrap_or_else(|| DEFAULT_ID.to_string()),
+            namespace_tenant: query
+                .tenant
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| DEFAULT_NAMESPACE_TENANT.to_string()),
+            namespace_style: query
+                .style_version
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| DEFAULT_NAMESPACE_STYLE.to_string()),
             kind: query
                 .kind
                 .as_deref()
@@ -1354,17 +1994,32 @@ impl S3Storage {
     async fn store_and_sign(
         &self,
         asset: &AvatarAsset,
+        metrics: &Metrics,
     ) -> Result<SignedStorageObject, Box<dyn std::error::Error>> {
         let key = format!("{}/{}", self.prefix.trim_matches('/'), asset.object_key);
-        self.client
-            .put_object()
+        let exists = self
+            .client
+            .head_object()
             .bucket(&self.bucket)
             .key(&key)
-            .body(ByteStream::from(asset.body.clone()))
-            .content_type(asset.content_type)
-            .cache_control("public, max-age=31536000, immutable")
             .send()
-            .await?;
+            .await
+            .is_ok();
+
+        if exists {
+            metrics.storage_hit_total.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.client
+                .put_object()
+                .bucket(&self.bucket)
+                .key(&key)
+                .body(ByteStream::from(asset.body.clone()))
+                .content_type(asset.content_type)
+                .cache_control("public, max-age=31536000, immutable")
+                .send()
+                .await?;
+            metrics.storage_write_total.fetch_add(1, Ordering::Relaxed);
+        }
 
         let presigned = self
             .client

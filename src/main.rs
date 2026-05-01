@@ -1,15 +1,15 @@
 use std::net::SocketAddr;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use aws_config::{BehaviorVersion, Region};
+use aws_sdk_s3::Client as S3Client;
 use aws_sdk_s3::config::Builder as S3ConfigBuilder;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::Client as S3Client;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -26,7 +26,7 @@ use sha2::{Digest, Sha256};
 
 const DEFAULT_HOST: &str = "0.0.0.0";
 const DEFAULT_PORT: u16 = 8080;
-const DEFAULT_ID: &str = "demo@example.com";
+const DEFAULT_ID: &str = "cat@hashavatar.app";
 const SITE_NAME: &str = "hashavatar.app";
 const SITE_URL: &str = "https://hashavatar.app";
 const REPOSITORY_URL: &str = "https://repoheim.eu/valkyoth/hashavatar-api";
@@ -37,6 +37,7 @@ const AVATAR_TIMEOUT_MS: u64 = 3_000;
 const STORAGE_TIMEOUT_MS: u64 = 5_000;
 const MIN_SIZE: u32 = 64;
 const MAX_SIZE: u32 = 1024;
+const PRESET_PAGE_SIZE: usize = 12;
 
 struct AppState {
     storage: Option<Arc<S3Storage>>,
@@ -143,15 +144,16 @@ async fn sitemap_xml() -> impl IntoResponse {
 async fn favicon_svg() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "image/svg+xml; charset=utf-8")],
-        format!(
-            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#f7f0e6"/><ellipse cx="32" cy="34" rx="18" ry="16" fill="#8d4dcb"/><polygon points="20,25 24,10 30,24" fill="#4c2d68"/><polygon points="44,25 40,10 34,24" fill="#4c2d68"/><ellipse cx="25" cy="31" rx="4" ry="5" fill="#fcf8ec"/><ellipse cx="39" cy="31" rx="4" ry="5" fill="#fcf8ec"/><ellipse cx="25" cy="31" rx="2" ry="3" fill="#18141c"/><ellipse cx="39" cy="31" rx="2" ry="3" fill="#18141c"/><rect x="22" y="40" width="20" height="5" rx="2" fill="#301218"/></svg>"##
-        ),
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#f7f0e6"/><ellipse cx="32" cy="34" rx="18" ry="16" fill="#8d4dcb"/><polygon points="20,25 24,10 30,24" fill="#4c2d68"/><polygon points="44,25 40,10 34,24" fill="#4c2d68"/><ellipse cx="25" cy="31" rx="4" ry="5" fill="#fcf8ec"/><ellipse cx="39" cy="31" rx="4" ry="5" fill="#fcf8ec"/><ellipse cx="25" cy="31" rx="2" ry="3" fill="#18141c"/><ellipse cx="39" cy="31" rx="2" ry="3" fill="#18141c"/><rect x="22" y="40" width="20" height="5" rx="2" fill="#301218"/></svg>"##.to_string(),
     )
 }
 
 async fn site_webmanifest() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "application/manifest+json; charset=utf-8")],
+        [(
+            header::CONTENT_TYPE,
+            "application/manifest+json; charset=utf-8",
+        )],
         Json(serde_json::json!({
             "name": SITE_NAME,
             "short_name": "hashavatar",
@@ -194,8 +196,8 @@ async fn openapi_json() -> impl IntoResponse {
                         {"name":"tenant","in":"query","schema":{"type":"string"}},
                         {"name":"style_version","in":"query","schema":{"type":"string"}},
                         {"name":"kind","in":"query","schema":{"type":"string","enum": AvatarKind::ALL.map(|kind| kind.as_str())}},
-                        {"name":"background","in":"query","schema":{"type":"string","enum":["themed","white"]}},
-                        {"name":"format","in":"query","schema":{"type":"string","enum":["webp","png","svg"]}},
+                        {"name":"background","in":"query","schema":{"type":"string","enum": AvatarBackground::ALL.map(|background| background.as_str())}},
+                        {"name":"format","in":"query","schema":{"type":"string","enum":["webp","png","jpg","gif","svg"]}},
                         {"name":"size","in":"query","schema":{"type":"integer","minimum": MIN_SIZE, "maximum": MAX_SIZE}}
                     ],
                     "responses": {"200":{"description":"Avatar asset"}}
@@ -223,9 +225,7 @@ async fn openapi_json() -> impl IntoResponse {
     }))
 }
 
-async fn og_png(
-    Query(query): Query<OgQuery>,
-) -> Response {
+async fn og_png(Query(query): Query<OgQuery>) -> Response {
     let title_id = query.id.unwrap_or_else(|| DEFAULT_ID.to_string());
     let namespace = AvatarNamespace::new(
         query.tenant.as_deref().unwrap_or(DEFAULT_NAMESPACE_TENANT),
@@ -235,8 +235,7 @@ async fn og_png(
             .unwrap_or(DEFAULT_NAMESPACE_STYLE),
     );
 
-    let mut canvas: RgbaImage =
-        ImageBuffer::from_pixel(1200, 630, Rgba([251, 246, 238, 255]));
+    let mut canvas: RgbaImage = ImageBuffer::from_pixel(1200, 630, Rgba([251, 246, 238, 255]));
     draw_rect(&mut canvas, 0, 0, 1200, 630, Rgba([242, 236, 228, 255]));
     draw_circle(&mut canvas, 160, 140, 180, Rgba([255, 214, 170, 180]));
     draw_circle(&mut canvas, 1030, 500, 150, Rgba([217, 122, 66, 70]));
@@ -254,7 +253,14 @@ async fn og_png(
             AvatarSpec::new(220, 220, 0),
             namespace,
             &title_id,
-            AvatarOptions::new(kind, if idx == 1 { AvatarBackground::White } else { AvatarBackground::Themed }),
+            AvatarOptions::new(
+                kind,
+                if idx == 1 {
+                    AvatarBackground::White
+                } else {
+                    AvatarBackground::Themed
+                },
+            ),
         );
         overlay(&mut canvas, &avatar, 110 + idx as u32 * 260, 180);
     }
@@ -275,7 +281,10 @@ async fn og_png(
 
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "image/png"), (header::CACHE_CONTROL, "public, max-age=86400")],
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
         bytes,
     )
         .into_response()
@@ -338,6 +347,8 @@ struct Metrics {
     generation_millis_total: Arc<AtomicU64>,
     format_webp_total: Arc<AtomicU64>,
     format_png_total: Arc<AtomicU64>,
+    format_jpeg_total: Arc<AtomicU64>,
+    format_gif_total: Arc<AtomicU64>,
     format_svg_total: Arc<AtomicU64>,
 }
 
@@ -364,6 +375,12 @@ impl Metrics {
             "png" => {
                 self.format_png_total.fetch_add(1, Ordering::Relaxed);
             }
+            "jpg" => {
+                self.format_jpeg_total.fetch_add(1, Ordering::Relaxed);
+            }
+            "gif" => {
+                self.format_gif_total.fetch_add(1, Ordering::Relaxed);
+            }
             "svg" => {
                 self.format_svg_total.fetch_add(1, Ordering::Relaxed);
             }
@@ -389,6 +406,8 @@ impl Metrics {
             formats: serde_json::json!({
                 "webp": self.format_webp_total.load(Ordering::Relaxed),
                 "png": self.format_png_total.load(Ordering::Relaxed),
+                "jpg": self.format_jpeg_total.load(Ordering::Relaxed),
+                "gif": self.format_gif_total.load(Ordering::Relaxed),
                 "svg": self.format_svg_total.load(Ordering::Relaxed),
             }),
             s3_enabled,
@@ -445,12 +464,14 @@ impl RateLimiter {
 
 fn client_ip(headers: &HeaderMap) -> String {
     for header_name in ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"] {
-        if let Some(value) = headers.get(header_name).and_then(|value| value.to_str().ok()) {
-            if let Some(first) = value.split(',').next() {
-                let trimmed = first.trim();
-                if !trimmed.is_empty() {
-                    return trimmed.to_string();
-                }
+        if let Some(value) = headers
+            .get(header_name)
+            .and_then(|value| value.to_str().ok())
+            && let Some(first) = value.split(',').next()
+        {
+            let trimmed = first.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
             }
         }
     }
@@ -528,10 +549,9 @@ async fn path_avatar(
 async fn serve_avatar(state: AppState, request: AvatarRequest) -> Response {
     state.metrics.requests_total.fetch_add(1, Ordering::Relaxed);
     let started = Instant::now();
-    let asset = match tokio::time::timeout(
-        Duration::from_millis(AVATAR_TIMEOUT_MS),
-        async { build_avatar_asset(&request) },
-    )
+    let asset = match tokio::time::timeout(Duration::from_millis(AVATAR_TIMEOUT_MS), async {
+        build_avatar_asset(&request)
+    })
     .await
     {
         Ok(Ok(asset)) => asset,
@@ -603,10 +623,9 @@ async fn serve_avatar_link(state: AppState, request: AvatarRequest) -> Response 
     };
 
     let started = Instant::now();
-    let asset = match tokio::time::timeout(
-        Duration::from_millis(AVATAR_TIMEOUT_MS),
-        async { build_avatar_asset(&request) },
-    )
+    let asset = match tokio::time::timeout(Duration::from_millis(AVATAR_TIMEOUT_MS), async {
+        build_avatar_asset(&request)
+    })
     .await
     {
         Ok(Ok(asset)) => asset,
@@ -666,14 +685,48 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
 
     let (body, content_type) = match request.format {
         AvatarRequestFormat::Webp => (
-            encode_avatar_for_namespace(spec, namespace, identity, AvatarOutputFormat::WebP, options)
-                .map_err(|error| format!("avatar generation failed: {error}"))?,
+            encode_avatar_for_namespace(
+                spec,
+                namespace,
+                identity,
+                AvatarOutputFormat::WebP,
+                options,
+            )
+            .map_err(|error| format!("avatar generation failed: {error}"))?,
             "image/webp",
         ),
         AvatarRequestFormat::Png => (
-            encode_avatar_for_namespace(spec, namespace, identity, AvatarOutputFormat::Png, options)
-                .map_err(|error| format!("avatar generation failed: {error}"))?,
+            encode_avatar_for_namespace(
+                spec,
+                namespace,
+                identity,
+                AvatarOutputFormat::Png,
+                options,
+            )
+            .map_err(|error| format!("avatar generation failed: {error}"))?,
             "image/png",
+        ),
+        AvatarRequestFormat::Jpeg => (
+            encode_avatar_for_namespace(
+                spec,
+                namespace,
+                identity,
+                AvatarOutputFormat::Jpeg,
+                options,
+            )
+            .map_err(|error| format!("avatar generation failed: {error}"))?,
+            "image/jpeg",
+        ),
+        AvatarRequestFormat::Gif => (
+            encode_avatar_for_namespace(
+                spec,
+                namespace,
+                identity,
+                AvatarOutputFormat::Gif,
+                options,
+            )
+            .map_err(|error| format!("avatar generation failed: {error}"))?,
+            "image/gif",
         ),
         AvatarRequestFormat::Svg => (
             render_avatar_svg_for_namespace(spec, namespace, identity, options).into_bytes(),
@@ -967,6 +1020,169 @@ fn escape_html_attribute(input: &str) -> String {
         .replace('>', "&gt;")
 }
 
+fn selected_attr(selected: bool) -> &'static str {
+    if selected { " selected" } else { "" }
+}
+
+fn avatar_kind_label(kind: AvatarKind) -> &'static str {
+    match kind {
+        AvatarKind::Cat => "Cat",
+        AvatarKind::Dog => "Dog",
+        AvatarKind::Robot => "Robot",
+        AvatarKind::Fox => "Fox",
+        AvatarKind::Alien => "Alien",
+        AvatarKind::Monster => "Monster",
+        AvatarKind::Ghost => "Ghost",
+        AvatarKind::Slime => "Slime",
+        AvatarKind::Bird => "Bird",
+        AvatarKind::Wizard => "Wizard",
+        AvatarKind::Skull => "Skull",
+        AvatarKind::Paws => "Paws",
+        AvatarKind::Planet => "Planet",
+        AvatarKind::Rocket => "Rocket",
+        AvatarKind::Mushroom => "Mushroom",
+        AvatarKind::Cactus => "Cactus",
+        AvatarKind::Frog => "Frog",
+        AvatarKind::Panda => "Panda",
+        AvatarKind::Cupcake => "Cupcake",
+        AvatarKind::Pizza => "Pizza",
+        AvatarKind::Icecream => "Ice Cream",
+        AvatarKind::Octopus => "Octopus",
+        AvatarKind::Knight => "Knight",
+    }
+}
+
+fn background_label(background: AvatarBackground) -> &'static str {
+    match background {
+        AvatarBackground::Themed => "Themed",
+        AvatarBackground::White => "White",
+        AvatarBackground::Black => "Black",
+        AvatarBackground::Dark => "Dark",
+        AvatarBackground::Light => "Light",
+        AvatarBackground::Transparent => "Transparent",
+    }
+}
+
+fn kind_options_html(selected: AvatarKind) -> String {
+    AvatarKind::ALL
+        .into_iter()
+        .map(|kind| {
+            format!(
+                r#"<option value="{value}" data-identity="{value}@hashavatar.app"{selected}>{label}</option>"#,
+                value = kind.as_str(),
+                label = avatar_kind_label(kind),
+                selected = selected_attr(kind == selected),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn background_options_html(selected: AvatarBackground) -> String {
+    AvatarBackground::ALL
+        .into_iter()
+        .map(|background| {
+            format!(
+                r#"<option value="{value}"{selected}>{label}</option>"#,
+                value = background.as_str(),
+                label = background_label(background),
+                selected = selected_attr(background == selected),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn format_options_html(selected: AvatarRequestFormat) -> String {
+    [
+        (AvatarRequestFormat::Webp, "WebP"),
+        (AvatarRequestFormat::Png, "PNG"),
+        (AvatarRequestFormat::Jpeg, "JPEG/JPG"),
+        (AvatarRequestFormat::Gif, "GIF"),
+        (AvatarRequestFormat::Svg, "SVG"),
+    ]
+    .into_iter()
+    .map(|(format, label)| {
+        format!(
+            r#"<option value="{value}"{selected}>{label}</option>"#,
+            value = format.as_str(),
+            selected = selected_attr(format == selected),
+            label = label,
+        )
+    })
+    .collect::<Vec<_>>()
+    .join("\n")
+}
+
+#[derive(Serialize)]
+struct PresetExample {
+    label: &'static str,
+    id: &'static str,
+    kind: &'static str,
+    background: &'static str,
+    format: &'static str,
+    size: &'static str,
+}
+
+fn preset_examples() -> Vec<PresetExample> {
+    AvatarKind::ALL
+        .into_iter()
+        .map(|kind| PresetExample {
+            label: avatar_kind_label(kind),
+            id: match kind {
+                AvatarKind::Icecream => "icecream@hashavatar.app",
+                _ => kind.as_str(),
+            },
+            kind: kind.as_str(),
+            background: match kind {
+                AvatarKind::Dog
+                | AvatarKind::Robot
+                | AvatarKind::Slime
+                | AvatarKind::Wizard
+                | AvatarKind::Paws => "white",
+                AvatarKind::Panda | AvatarKind::Knight => "light",
+                AvatarKind::Ghost | AvatarKind::Skull => "dark",
+                _ => "themed",
+            },
+            format: "webp",
+            size: "256",
+        })
+        .map(|mut preset| {
+            preset.id = match preset.kind {
+                "cat" => "cat@hashavatar.app",
+                "dog" => "dog@hashavatar.app",
+                "robot" => "robot@hashavatar.app",
+                "fox" => "fox@hashavatar.app",
+                "alien" => "alien@hashavatar.app",
+                "monster" => "monster@hashavatar.app",
+                "ghost" => "ghost@hashavatar.app",
+                "slime" => "slime@hashavatar.app",
+                "bird" => "bird@hashavatar.app",
+                "wizard" => "wizard@hashavatar.app",
+                "skull" => "skull@hashavatar.app",
+                "paws" => "paws@hashavatar.app",
+                "planet" => "planet@hashavatar.app",
+                "rocket" => "rocket@hashavatar.app",
+                "mushroom" => "mushroom@hashavatar.app",
+                "cactus" => "cactus@hashavatar.app",
+                "frog" => "frog@hashavatar.app",
+                "panda" => "panda@hashavatar.app",
+                "cupcake" => "cupcake@hashavatar.app",
+                "pizza" => "pizza@hashavatar.app",
+                "icecream" => "icecream@hashavatar.app",
+                "octopus" => "octopus@hashavatar.app",
+                "knight" => "knight@hashavatar.app",
+                _ => DEFAULT_ID,
+            };
+            preset
+        })
+        .collect()
+}
+
+fn preset_examples_json() -> String {
+    serde_json::to_string(&preset_examples()).expect("preset examples should serialize")
+}
+
 fn render_meta_tags(title: &str, description: &str, path: &str) -> String {
     let canonical = if path == "/" {
         format!("{SITE_URL}/")
@@ -1011,8 +1227,7 @@ fn render_json_ld(title: &str, description: &str, canonical: &str) -> String {
     let title = serde_json::to_string(title).unwrap_or_else(|_| "\"hashavatar.app\"".to_string());
     let description = serde_json::to_string(description)
         .unwrap_or_else(|_| "\"Deterministic avatar API\"".to_string());
-    let canonical =
-        serde_json::to_string(canonical).unwrap_or_else(|_| format!("\"{SITE_URL}/\""));
+    let canonical = serde_json::to_string(canonical).unwrap_or_else(|_| format!("\"{SITE_URL}/\""));
     let site_url = serde_json::to_string(SITE_URL).unwrap_or_else(|_| format!("\"{SITE_URL}\""));
     let search_target = serde_json::to_string(&format!("{SITE_URL}/?id={{search_term_string}}"))
         .unwrap_or_else(|_| format!("\"{SITE_URL}/?id={{search_term_string}}\""));
@@ -1104,7 +1319,7 @@ fn render_page_html(
 }
 
 fn render_index_html() -> String {
-    let description = "Deterministic procedural avatars for emails, usernames, and internal ids. Generate cat, dog, robot, fox, alien, monster, ghost, slime, bird, wizard, skull, and paws avatars as WebP, PNG, or SVG.";
+    let description = "Deterministic procedural avatars for emails, usernames, and internal ids. Generate 23 avatar families as WebP, PNG, JPEG, GIF, or SVG.";
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -1267,6 +1482,17 @@ fn render_index_html() -> String {
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 14px;
     }}
+    .example-header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }}
+    .example-page {{
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 700;
+    }}
     .example-card {{
       border: 1px solid var(--line);
       border-radius: 20px;
@@ -1289,6 +1515,18 @@ fn render_index_html() -> String {
     .example-title {{
       font-weight: 700;
       color: var(--ink);
+    }}
+    .example-controls {{
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 4px;
+    }}
+    .example-controls button {{
+      min-height: 38px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      line-height: 1;
     }}
     pre {{
       margin: 0;
@@ -1340,7 +1578,7 @@ fn render_index_html() -> String {
           <div class="field-grid full">
             <div>
               <label for="identity">Identity</label>
-              <input id="identity" type="text" value="{id}" placeholder="you@example.com" spellcheck="false" autocomplete="off" />
+              <input id="identity" type="text" value="{id}" placeholder="cat@hashavatar.app" spellcheck="false" autocomplete="off" />
             </div>
           </div>
 
@@ -1359,25 +1597,13 @@ fn render_index_html() -> String {
             <div>
               <label for="kind">Avatar Type</label>
               <select id="kind">
-                <option value="cat">Cat</option>
-                <option value="dog">Dog</option>
-                <option value="robot">Robot</option>
-                <option value="fox">Fox</option>
-                <option value="alien" selected>Alien</option>
-                <option value="monster">Monster</option>
-                <option value="ghost">Ghost</option>
-                <option value="slime">Slime</option>
-                <option value="bird">Bird</option>
-                <option value="wizard">Wizard</option>
-                <option value="skull">Skull</option>
-                <option value="paws">Paws</option>
+                {kind_options}
               </select>
             </div>
             <div>
               <label for="background">Background</label>
               <select id="background">
-                <option value="themed" selected>Themed</option>
-                <option value="white">White</option>
+                {background_options}
               </select>
             </div>
           </div>
@@ -1386,9 +1612,7 @@ fn render_index_html() -> String {
             <div>
               <label for="format">Format</label>
               <select id="format">
-                <option value="webp" selected>WebP</option>
-                <option value="png">PNG</option>
-                <option value="svg">SVG</option>
+                {format_options}
               </select>
             </div>
             <div>
@@ -1406,8 +1630,8 @@ fn render_index_html() -> String {
           <div class="actions">
             <button id="copy-button" type="button">Copy URL</button>
             <button id="copy-signed-button" type="button" class="secondary">Copy Signed Link</button>
-            <a id="download-button" class="button-link" href="/v1/avatar?id={id}&kind=alien&background=themed&format=webp&size=256" download="hashavatar.webp">Download</a>
-            <a id="open-button" class="button-link secondary" href="/v1/avatar?id={id}&kind=alien&background=themed&format=webp&size=256" target="_blank" rel="noreferrer">Open Raw</a>
+            <a id="download-button" class="button-link" href="/v1/avatar?id={id}&kind=cat&background=themed&format=webp&size=256" download="hashavatar.webp">Download</a>
+            <a id="open-button" class="button-link secondary" href="/v1/avatar?id={id}&kind=cat&background=themed&format=webp&size=256" target="_blank" rel="noreferrer">Open Raw</a>
           </div>
 
           <div class="url-panel">
@@ -1429,7 +1653,7 @@ fn render_index_html() -> String {
 
       <div class="preview">
         <div class="panel">
-          <img id="avatar-preview" src="/v1/avatar?id={id}&kind=alien&background=themed&format=webp&size=256" alt="Generated avatar preview" />
+          <img id="avatar-preview" src="/v1/avatar?id={id}&kind=cat&background=themed&format=webp&size=256" alt="Generated avatar preview" />
         </div>
         <div class="preview-meta">
           <div><strong>API:</strong> <span id="api-mode">/v1/avatar</span></div>
@@ -1439,55 +1663,15 @@ fn render_index_html() -> String {
         </div>
 
         <div class="examples" style="width:100%;">
-          <div class="example-grid">
-            <button type="button" class="example-card" data-id="alice@example.com" data-kind="cat" data-background="themed" data-format="webp" data-size="256">
-              <img src="/v1/avatar?id=alice@example.com&kind=cat&background=themed&format=webp&size=160" alt="Cat preset" />
-              <div class="example-title">Cat preset</div>
-            </button>
-            <button type="button" class="example-card" data-id="barkley@hashavatar.app" data-kind="dog" data-background="white" data-format="webp" data-size="256">
-              <img src="/v1/avatar?id=barkley@hashavatar.app&kind=dog&background=white&format=webp&size=160" alt="Dog preset" />
-              <div class="example-title">Dog preset</div>
-            </button>
-            <button type="button" class="example-card" data-id="buildbot-42" data-kind="robot" data-background="white" data-format="png" data-size="256">
-              <img src="/v1/avatar?id=buildbot-42&kind=robot&background=white&format=webp&size=160" alt="Robot preset" />
-              <div class="example-title">Robot preset</div>
-            </button>
-            <button type="button" class="example-card" data-id="ember-forest" data-kind="fox" data-background="themed" data-format="webp" data-size="256">
-              <img src="/v1/avatar?id=ember-forest&kind=fox&background=themed&format=webp&size=160" alt="Fox preset" />
-              <div class="example-title">Fox preset</div>
-            </button>
-            <button type="button" class="example-card" data-id="space-user" data-kind="alien" data-background="themed" data-format="svg" data-size="320">
-              <img src="/v1/avatar?id=space-user&kind=alien&background=themed&format=webp&size=160" alt="Alien preset" />
-              <div class="example-title">Alien preset</div>
-            </button>
-            <button type="button" class="example-card" data-id="cryptid-lab" data-kind="monster" data-background="themed" data-format="webp" data-size="512">
-              <img src="/v1/avatar?id=cryptid-lab&kind=monster&background=themed&format=webp&size=160" alt="Monster preset" />
-              <div class="example-title">Monster preset</div>
-            </button>
-            <button type="button" class="example-card" data-id="boo@hashavatar.app" data-kind="ghost" data-background="themed" data-format="webp" data-size="256">
-              <img src="/v1/avatar?id=boo@hashavatar.app&kind=ghost&background=themed&format=webp&size=160" alt="Ghost preset" />
-              <div class="example-title">Ghost preset</div>
-            </button>
-            <button type="button" class="example-card" data-id="gel-cube" data-kind="slime" data-background="white" data-format="png" data-size="256">
-              <img src="/v1/avatar?id=gel-cube&kind=slime&background=white&format=webp&size=160" alt="Slime preset" />
-              <div class="example-title">Slime preset</div>
-            </button>
-            <button type="button" class="example-card" data-id="swift-feather" data-kind="bird" data-background="themed" data-format="webp" data-size="256">
-              <img src="/v1/avatar?id=swift-feather&kind=bird&background=themed&format=webp&size=160" alt="Bird preset" />
-              <div class="example-title">Bird preset</div>
-            </button>
-            <button type="button" class="example-card" data-id="merlin-core" data-kind="wizard" data-background="white" data-format="svg" data-size="320">
-              <img src="/v1/avatar?id=merlin-core&kind=wizard&background=white&format=webp&size=160" alt="Wizard preset" />
-              <div class="example-title">Wizard preset</div>
-            </button>
-            <button type="button" class="example-card" data-id="ossuary" data-kind="skull" data-background="themed" data-format="webp" data-size="256">
-              <img src="/v1/avatar?id=ossuary&kind=skull&background=themed&format=webp&size=160" alt="Skull preset" />
-              <div class="example-title">Skull preset</div>
-            </button>
-            <button type="button" class="example-card" data-id="mittens-club" data-kind="paws" data-background="white" data-format="png" data-size="256">
-              <img src="/v1/avatar?id=mittens-club&kind=paws&background=white&format=webp&size=160" alt="Paws preset" />
-              <div class="example-title">Paws preset</div>
-            </button>
+          <div class="example-header">
+            <div class="url-label">Preset Examples</div>
+            <div id="example-page" class="example-page"></div>
+          </div>
+          <div class="example-grid" id="example-grid">
+          </div>
+          <div class="example-controls">
+            <button id="preset-prev" type="button" class="secondary" aria-label="Previous preset page">&larr;</button>
+            <button id="preset-next" type="button" class="secondary" aria-label="Next preset page">&rarr;</button>
           </div>
         </div>
       </div>
@@ -1509,9 +1693,32 @@ fn render_index_html() -> String {
     const copySignedButton = document.getElementById("copy-signed-button");
     const downloadButton = document.getElementById("download-button");
     const openButton = document.getElementById("open-button");
+    const exampleGrid = document.getElementById("example-grid");
+    const examplePage = document.getElementById("example-page");
+    const presetPrev = document.getElementById("preset-prev");
+    const presetNext = document.getElementById("preset-next");
+    const presetExamples = {preset_examples};
+    const presetPageSize = {preset_page_size};
+    const presetIdentities = new Map(
+      Array.from(kindEl.options).map((option) => [option.value, option.dataset.identity])
+    );
+    let presetPage = 0;
 
     function currentIdentity() {{
       return identityEl.value.trim() || "{id}";
+    }}
+
+    function selectedPresetIdentity() {{
+      return presetIdentities.get(kindEl.value) || "{id}";
+    }}
+
+    function isPresetIdentity(value) {{
+      for (const identity of presetIdentities.values()) {{
+        if (value === identity) {{
+          return true;
+        }}
+      }}
+      return false;
     }}
 
     function currentUrl() {{
@@ -1568,9 +1775,57 @@ fn render_index_html() -> String {
       previewEl.src = `/v1/avatar?${{previewQuery.toString()}}`;
       urlEl.textContent = `${{window.location.origin}}${{url}}`;
       downloadButton.href = url;
-      downloadButton.setAttribute("download", `hashavatar-${{kindEl.value}}.${{formatEl.value}}`);
+      const extension = formatEl.value === "jpg" ? "jpg" : formatEl.value;
+      downloadButton.setAttribute("download", `hashavatar-${{kindEl.value}}.${{extension}}`);
       openButton.href = url;
       updateSignedUrl();
+    }}
+
+    function setFromPreset(preset) {{
+      identityEl.value = preset.id;
+      tenantEl.value = "{tenant}";
+      styleVersionEl.value = "{style_version}";
+      kindEl.value = preset.kind;
+      backgroundEl.value = backgroundEl.value || preset.background;
+      formatEl.value = preset.format;
+      sizeEl.value = preset.size;
+      refresh();
+    }}
+
+    function renderPresetPage() {{
+      const pageCount = Math.ceil(presetExamples.length / presetPageSize);
+      presetPage = (presetPage + pageCount) % pageCount;
+      const start = presetPage * presetPageSize;
+      const pageItems = presetExamples.slice(start, start + presetPageSize);
+      const exampleBackground = backgroundEl.value || "themed";
+      exampleGrid.replaceChildren();
+      for (const preset of pageItems) {{
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "example-card";
+        button.addEventListener("click", () => setFromPreset(preset));
+
+        const query = new URLSearchParams({{
+          id: preset.id,
+          kind: preset.kind,
+          background: exampleBackground,
+          format: "webp",
+          size: "160",
+        }});
+        const image = document.createElement("img");
+        image.src = `/v1/avatar?${{query.toString()}}`;
+        image.alt = `${{preset.label}} preset`;
+
+        const title = document.createElement("div");
+        title.className = "example-title";
+        title.textContent = `${{preset.label}} preset`;
+
+        button.append(image, title);
+        exampleGrid.append(button);
+      }}
+      examplePage.textContent = `${{presetPage + 1}} / ${{pageCount}}`;
+      presetPrev.disabled = pageCount <= 1;
+      presetNext.disabled = pageCount <= 1;
     }}
 
     async function copyText(text, button, idleText, successText) {{
@@ -1591,19 +1846,27 @@ fn render_index_html() -> String {
       el.addEventListener("change", refresh);
     }});
 
-    document.querySelectorAll(".example-card").forEach((card) => {{
-      card.addEventListener("click", () => {{
-        identityEl.value = card.dataset.id;
-        tenantEl.value = "{tenant}";
-        styleVersionEl.value = "{style_version}";
-        kindEl.value = card.dataset.kind;
-        backgroundEl.value = card.dataset.background;
-        formatEl.value = card.dataset.format;
-        sizeEl.value = card.dataset.size;
-        refresh();
-      }});
+    backgroundEl.addEventListener("change", renderPresetPage);
+
+    kindEl.addEventListener("change", () => {{
+      const current = identityEl.value.trim();
+      if (current === "" || isPresetIdentity(current)) {{
+        identityEl.value = selectedPresetIdentity();
+      }}
+      refresh();
     }});
 
+    presetPrev.addEventListener("click", () => {{
+      presetPage -= 1;
+      renderPresetPage();
+    }});
+
+    presetNext.addEventListener("click", () => {{
+      presetPage += 1;
+      renderPresetPage();
+    }});
+
+    renderPresetPage();
     refresh();
   </script>
 </body>
@@ -1611,6 +1874,11 @@ fn render_index_html() -> String {
         id = DEFAULT_ID,
         tenant = DEFAULT_NAMESPACE_TENANT,
         style_version = DEFAULT_NAMESPACE_STYLE,
+        kind_options = kind_options_html(AvatarKind::Cat),
+        background_options = background_options_html(AvatarBackground::Themed),
+        format_options = format_options_html(AvatarRequestFormat::Webp),
+        preset_examples = preset_examples_json(),
+        preset_page_size = PRESET_PAGE_SIZE,
         meta_tags = render_meta_tags("Public Avatar API", description, "/"),
         styles = shared_page_styles(),
         footer = render_footer_html(),
@@ -1632,18 +1900,18 @@ fn render_help_html() -> String {
   <section class="card">
     <h2>Basic URL</h2>
     <p>Use the query endpoint when you want a simple public image URL.</p>
-    <pre><code>https://{site}/v1/avatar?id=alice@example.com&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+    <pre><code>https://{site}/v1/avatar?id=robot@hashavatar.app&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
     <h2>Path Style URL</h2>
     <p>Use the path form if you prefer cleaner embed URLs.</p>
-    <pre><code>https://{site}/avatar/fox/alice@example.com/svg</code></pre>
+    <pre><code>https://{site}/avatar/fox/fox@hashavatar.app/svg</code></pre>
   </section>
   <section class="card">
     <h2>HTML Example</h2>
     <pre><code>&lt;img
-  src="https://{site}/v1/avatar?id=alice@example.com&amp;kind=monster&amp;background=themed&amp;format=webp&amp;size=256"
-  alt="Alice avatar"
+  src="https://{site}/v1/avatar?id=monster@hashavatar.app&amp;kind=monster&amp;background=themed&amp;format=webp&amp;size=256"
+  alt="Generated monster avatar"
 /&gt;</code></pre>
   </section>
   <section class="card">
@@ -1664,16 +1932,16 @@ avatarUrl.search = new URLSearchParams({{
     <li><code>id</code>: any stable identifier such as an email, username, or internal user id</li>
     <li><code>tenant</code>: optional namespace partition for multi-tenant apps</li>
     <li><code>style_version</code>: optional style namespace such as <code>v2</code></li>
-    <li><code>kind</code>: <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>fox</code>, <code>alien</code>, <code>monster</code>, <code>ghost</code>, <code>slime</code>, <code>bird</code>, <code>wizard</code>, <code>skull</code>, or <code>paws</code></li>
-    <li><code>background</code>: <code>themed</code> or <code>white</code></li>
-    <li><code>format</code>: <code>webp</code>, <code>png</code>, or <code>svg</code></li>
+    <li><code>kind</code>: any public hashavatar family, including <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>planet</code>, <code>rocket</code>, <code>frog</code>, <code>panda</code>, <code>cupcake</code>, <code>pizza</code>, <code>octopus</code>, and <code>knight</code></li>
+    <li><code>background</code>: <code>themed</code>, <code>white</code>, <code>black</code>, <code>dark</code>, <code>light</code>, or <code>transparent</code></li>
+    <li><code>format</code>: <code>webp</code>, <code>png</code>, <code>jpg</code>, <code>gif</code>, or <code>svg</code></li>
     <li><code>size</code>: from <code>64</code> up to <code>1024</code></li>
   </ul>
 </section>
 <section class="card">
   <h2>Signed Storage Links</h2>
   <p>If this deployment has object storage configured, request a presigned storage link from <code>/v1/avatar/link</code>. That endpoint stores the generated object and returns JSON with the signed URL and object key.</p>
-  <pre><code>GET https://{site}/v1/avatar/link?id=alice@example.com&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+  <pre><code>GET https://{site}/v1/avatar/link?id=robot@hashavatar.app&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
 </section>
 <section class="card">
   <h2>Open Source</h2>
@@ -1710,7 +1978,7 @@ fn render_docs_html() -> String {
   <section class="card">
     <h2>Namespace Support</h2>
     <p>Use <code>tenant</code> and <code>style_version</code> to keep visual identity spaces separate between products or rollout phases.</p>
-    <pre><code>GET https://{site}/v1/avatar?id=user-42&amp;tenant=acme&amp;style_version=v2&amp;kind=wizard&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+    <pre><code>GET https://{site}/v1/avatar?id=wizard@hashavatar.app&amp;tenant=acme&amp;style_version=v2&amp;kind=wizard&amp;background=white&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
     <h2>Anonymous IDs</h2>
@@ -1844,6 +2112,8 @@ struct PathAvatar {
 enum AvatarRequestFormat {
     Webp,
     Png,
+    Jpeg,
+    Gif,
     Svg,
 }
 
@@ -1852,6 +2122,8 @@ impl AvatarRequestFormat {
         match self {
             Self::Webp => "webp",
             Self::Png => "png",
+            Self::Jpeg => "jpg",
+            Self::Gif => "gif",
             Self::Svg => "svg",
         }
     }
@@ -1870,6 +2142,8 @@ impl FromStr for AvatarRequestFormat {
         match s.trim().to_ascii_lowercase().as_str() {
             "webp" => Ok(Self::Webp),
             "png" => Ok(Self::Png),
+            "jpg" | "jpeg" => Ok(Self::Jpeg),
+            "gif" => Ok(Self::Gif),
             "svg" => Ok(Self::Svg),
             _ => Err("unsupported avatar format"),
         }
@@ -1958,13 +2232,15 @@ impl S3Storage {
             _ => return Ok(None),
         };
 
-        let region = std::env::var("HASHAVATAR_S3_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+        let region =
+            std::env::var("HASHAVATAR_S3_REGION").unwrap_or_else(|_| "us-east-1".to_string());
         let endpoint = std::env::var("HASHAVATAR_S3_ENDPOINT").ok();
         let force_path_style = std::env::var("HASHAVATAR_S3_PATH_STYLE")
             .ok()
             .map(|raw| matches!(raw.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);
-        let prefix = std::env::var("HASHAVATAR_S3_PREFIX").unwrap_or_else(|_| "avatars".to_string());
+        let prefix =
+            std::env::var("HASHAVATAR_S3_PREFIX").unwrap_or_else(|_| "avatars".to_string());
         let ttl = std::env::var("HASHAVATAR_S3_PRESIGN_TTL_SECONDS")
             .ok()
             .and_then(|raw| raw.parse::<u64>().ok())

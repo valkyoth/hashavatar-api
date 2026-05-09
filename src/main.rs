@@ -29,7 +29,7 @@ const DEFAULT_PORT: u16 = 8080;
 const DEFAULT_ID: &str = "cat@hashavatar.app";
 const SITE_NAME: &str = "hashavatar.app";
 const SITE_URL: &str = "https://hashavatar.app";
-const REPOSITORY_URL: &str = "https://repoheim.eu/valkyoth/hashavatar-api";
+const REPOSITORY_URL: &str = "https://github.com/valkyoth/hashavatar-api";
 const CRATE_URL: &str = "https://crates.io/crates/hashavatar/";
 const DEFAULT_NAMESPACE_TENANT: &str = "public";
 const DEFAULT_NAMESPACE_STYLE: &str = "v2";
@@ -2074,7 +2074,7 @@ fn render_privacy_html() -> String {
 </section>
 <section class="card">
   <h2>Repository And Crate</h2>
-  <p>You can inspect the implementation in the public <a class="inline-link" href="https://repoheim.eu/valkyoth/hashavatar-api" target="_blank" rel="noreferrer">API repository</a> and the reusable avatar renderer in the <a class="inline-link" href="https://crates.io/crates/hashavatar/" target="_blank" rel="noreferrer">Rust crate</a>.</p>
+  <p>You can inspect the implementation in the public <a class="inline-link" href="https://github.com/valkyoth/hashavatar-api" target="_blank" rel="noreferrer">API repository</a> and the reusable avatar renderer in the <a class="inline-link" href="https://crates.io/crates/hashavatar/" target="_blank" rel="noreferrer">Rust crate</a>.</p>
 </section>
 "#,
     )

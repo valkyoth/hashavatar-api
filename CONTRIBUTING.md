@@ -4,7 +4,7 @@ Thanks for helping improve `hashavatar`.
 
 ## Development
 
-Use the stable Rust toolchain.
+Use Rust 1.95 or newer.
 
 ```bash
 cargo fmt --check

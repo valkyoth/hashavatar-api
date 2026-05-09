@@ -30,7 +30,7 @@ Supported backgrounds:
 - `light`
 - `transparent`
 
-Supported avatar families are provided by `hashavatar 0.4.1`, including `cat`, `dog`, `robot`, `fox`, `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`, `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`, `pizza`, `icecream`, `octopus`, and `knight`.
+Supported avatar families are provided by `hashavatar 0.4.2`, including `cat`, `dog`, `robot`, `fox`, `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`, `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`, `pizza`, `icecream`, `octopus`, and `knight`.
 
 ## Example URLs
 
@@ -69,6 +69,8 @@ The service emits:
 - `ETag`
 
 ## Running Locally
+
+Requires Rust 1.95 or newer.
 
 ```bash
 cargo run

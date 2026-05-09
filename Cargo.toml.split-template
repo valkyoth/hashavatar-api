@@ -1,7 +1,8 @@
 [package]
 name = "hashavatar-api"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
+rust-version = "1.95"
 description = "Public avatar API and landing page for hashavatar"
 license = "EUPL-1.2"
 repository = "https://github.com/valkyoth/hashavatar-api"

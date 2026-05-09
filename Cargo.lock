@@ -947,7 +947,9 @@ dependencies = [
 
 [[package]]
 name = "hashavatar"
-version = "0.4.1"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4587f99114e6af017d402c2027a63cd68a45e0e606ca28c66ecf79ae8c9998bc"
 dependencies = [
  "axum",
  "image",

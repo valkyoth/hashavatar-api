@@ -1,9 +1,9 @@
-# cargo-deny license policy for hashavatar-api.
+# cargo-deny license policy for hashavatar.
 #
-# The service is licensed under EUPL-1.2. This allowlist admits the project
-# license and permissive dependency licenses that do not conflict with EUPL-1.2
-# distribution. More restrictive reciprocal licenses should be reviewed as
-# crate-specific exceptions rather than allowed globally.
+# The project itself is licensed under EUPL-1.2. This allowlist admits the
+# project license and permissive dependency licenses that do not conflict with
+# EUPL-1.2 distribution. More restrictive reciprocal licenses should be reviewed
+# and added as crate-specific exceptions rather than allowed globally.
 
 [licenses]
 confidence-threshold = 0.8

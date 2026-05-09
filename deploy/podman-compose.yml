@@ -1,11 +1,11 @@
 version: "3.9"
 
 services:
-  app:
+  hashavatar:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: hashavatar-app:latest
+    image: hashavatar-api:latest-wolfi
     container_name: hashavatar-app
     environment:
       PORT: "8080"
@@ -14,25 +14,30 @@ services:
     networks:
       - hashavatar
 
-  caddy:
-    image: docker.io/library/caddy:2
-    container_name: hashavatar-caddy
+  fluxheim:
+    image: ghcr.io/valkyoth/fluxheim:v1.0.0-wolfi
+    container_name: hashavatar-fluxheim
     restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 15s
     depends_on:
-      - app
+      - hashavatar
     ports:
-      - "80:80"
-      - "443:443"
+      - "80:8080"
+      - "443:8443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - ./fluxheim.toml:/etc/fluxheim/fluxheim.toml:ro,Z
+      - ./tls:/etc/fluxheim/tls:ro,Z
+      - fluxheim_state:/var/lib/fluxheim:Z,U
+      - fluxheim_cache:/var/cache/fluxheim:Z,U
+      - fluxheim_logs:/var/log/fluxheim:Z,U
     networks:
       - hashavatar
 
 volumes:
-  caddy_data:
-  caddy_config:
+  fluxheim_state:
+  fluxheim_cache:
+  fluxheim_logs:
 
 networks:
   hashavatar:

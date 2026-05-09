@@ -111,7 +111,7 @@ For self-hosting on Hetzner with Podman, see:
 
 - [`DEPLOYMENT-HETZNER.md`](./DEPLOYMENT-HETZNER.md)
 - [`deploy/podman-compose.yml`](./deploy/podman-compose.yml)
-- [`deploy/Caddyfile`](./deploy/Caddyfile)
+- [`deploy/fluxheim.toml`](./deploy/fluxheim.toml)
 
 ## Related Project
 

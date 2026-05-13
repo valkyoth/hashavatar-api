@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -35,6 +36,8 @@ const DEFAULT_NAMESPACE_TENANT: &str = "public";
 const DEFAULT_NAMESPACE_STYLE: &str = "v2";
 const AVATAR_TIMEOUT_MS: u64 = 3_000;
 const STORAGE_TIMEOUT_MS: u64 = 5_000;
+const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
+const MAX_RATE_LIMIT_BUCKETS: usize = 16_384;
 const MIN_SIZE: u32 = 64;
 const MAX_SIZE: u32 = 1024;
 const PRESET_PAGE_SIZE: usize = 12;
@@ -324,15 +327,53 @@ impl RateLimitRoute {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 struct RateLimiter {
-    buckets: Arc<Mutex<std::collections::HashMap<String, RateBucket>>>,
+    buckets: Arc<Mutex<lru::LruCache<String, RateBucket>>>,
 }
 
 #[derive(Clone, Copy)]
 struct RateBucket {
     started_at: Instant,
     count: u32,
+}
+
+impl Default for RateLimiter {
+    fn default() -> Self {
+        Self::with_capacity(MAX_RATE_LIMIT_BUCKETS)
+    }
+}
+
+impl RateLimiter {
+    fn with_capacity(capacity: usize) -> Self {
+        let capacity = NonZeroUsize::new(capacity.max(1)).expect("capacity is non-zero");
+        Self {
+            buckets: Arc::new(Mutex::new(lru::LruCache::new(capacity))),
+        }
+    }
+
+    fn check(&self, key: String, limit: u32) -> bool {
+        let now = Instant::now();
+        let mut buckets = self.buckets.lock().expect("rate limiter poisoned");
+        let bucket = buckets.get_or_insert_mut(key, || RateBucket {
+            started_at: now,
+            count: 0,
+        });
+        if now.duration_since(bucket.started_at) >= RATE_LIMIT_WINDOW {
+            bucket.started_at = now;
+            bucket.count = 0;
+        }
+        if bucket.count >= limit {
+            return false;
+        }
+        bucket.count += 1;
+        true
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.buckets.lock().expect("rate limiter poisoned").len()
+    }
 }
 
 #[derive(Default, Clone)]
@@ -439,26 +480,6 @@ async fn enforce_limits(
             "rate limit exceeded, please retry shortly".to_string(),
         )
             .into_response())
-    }
-}
-
-impl RateLimiter {
-    fn check(&self, key: String, limit: u32) -> bool {
-        let now = Instant::now();
-        let mut buckets = self.buckets.lock().expect("rate limiter poisoned");
-        let bucket = buckets.entry(key).or_insert(RateBucket {
-            started_at: now,
-            count: 0,
-        });
-        if now.duration_since(bucket.started_at) >= Duration::from_secs(60) {
-            bucket.started_at = now;
-            bucket.count = 0;
-        }
-        if bucket.count >= limit {
-            return false;
-        }
-        bucket.count += 1;
-        true
     }
 }
 
@@ -2329,5 +2350,46 @@ impl HeaderName {
 
     fn signed_url() -> axum::http::HeaderName {
         axum::http::HeaderName::from_static("x-hashavatar-signed-url")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rate_limiter_enforces_per_key_limit() {
+        let limiter = RateLimiter::with_capacity(8);
+        let key = "avatar:127.0.0.1:public:cat".to_string();
+
+        assert!(limiter.check(key.clone(), 2));
+        assert!(limiter.check(key.clone(), 2));
+        assert!(!limiter.check(key, 2));
+    }
+
+    #[test]
+    fn rate_limiter_evicts_oldest_bucket_at_capacity() {
+        let limiter = RateLimiter::with_capacity(2);
+
+        assert!(limiter.check("first".to_string(), 1));
+        assert!(limiter.check("second".to_string(), 1));
+        assert_eq!(limiter.len(), 2);
+
+        assert!(limiter.check("third".to_string(), 1));
+        assert_eq!(limiter.len(), 2);
+
+        assert!(limiter.check("first".to_string(), 1));
+        assert_eq!(limiter.len(), 2);
+    }
+
+    #[test]
+    fn rate_limiter_bounds_unique_attacker_keys() {
+        let limiter = RateLimiter::with_capacity(32);
+
+        for idx in 0..1_000 {
+            assert!(limiter.check(format!("avatar:spoofed-{idx}:tenant-{idx}:cat"), 1));
+        }
+
+        assert_eq!(limiter.len(), 32);
     }
 }

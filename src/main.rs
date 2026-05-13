@@ -40,6 +40,7 @@ const AVATAR_TIMEOUT_MS: u64 = 3_000;
 const STORAGE_TIMEOUT_MS: u64 = 5_000;
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 const MAX_RATE_LIMIT_BUCKETS: usize = 16_384;
+const INTERNAL_ERROR_MESSAGE: &str = "An internal server error occurred.";
 const MIN_SIZE: u32 = 64;
 const MAX_SIZE: u32 = 1024;
 const PRESET_PAGE_SIZE: usize = 12;
@@ -64,6 +65,8 @@ impl Clone for AppState {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    init_logging();
+
     let host = std::env::var("PUBLIC_WEBSITE_HOST").unwrap_or_else(|_| DEFAULT_HOST.to_string());
     let port = std::env::var("PORT")
         .ok()
@@ -98,13 +101,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(address).await?;
-    println!("{SITE_NAME} listening on http://{address}");
+    tracing::info!(service = SITE_NAME, %address, "listening");
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
     Ok(())
+}
+
+fn init_logging() {
+    let _ = tracing_subscriber::fmt::try_init();
 }
 
 async fn index() -> Html<String> {
@@ -907,11 +914,8 @@ fn bad_request(message: &str) -> Response {
 }
 
 fn internal_error(error: impl std::fmt::Display) -> Response {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        format!("avatar generation failed: {error}"),
-    )
-        .into_response()
+    tracing::error!(error = %error, "avatar generation failed");
+    (StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERROR_MESSAGE).into_response()
 }
 
 fn request_timeout(message: &str) -> Response {
@@ -2513,5 +2517,21 @@ mod tests {
             client_ip(&headers, peer_ip, &trusted_proxies),
             "10.89.42.10"
         );
+    }
+
+    #[tokio::test]
+    async fn internal_error_does_not_expose_details() {
+        let response = internal_error("s3 bucket hashavatar-private in eu-north-1 denied");
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let body = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .expect("internal error body");
+        let body = std::str::from_utf8(&body).expect("utf8 body");
+
+        assert_eq!(body, INTERNAL_ERROR_MESSAGE);
+        assert!(!body.contains("hashavatar-private"));
+        assert!(!body.contains("eu-north-1"));
     }
 }

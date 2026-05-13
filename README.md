@@ -92,6 +92,11 @@ Environment variables:
 - `HASHAVATAR_S3_PATH_STYLE`
 - `HASHAVATAR_S3_PREFIX`
 - `HASHAVATAR_S3_PRESIGN_TTL_SECONDS`
+- `HASHAVATAR_TRUSTED_PROXIES`
+
+`HASHAVATAR_TRUSTED_PROXIES` accepts a comma or whitespace separated list of IP
+addresses and CIDR ranges. Forwarded client IP headers are ignored unless the
+direct peer address matches this allowlist.
 
 ## Security Checks
 

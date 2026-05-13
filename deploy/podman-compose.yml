@@ -10,6 +10,7 @@ services:
     environment:
       PORT: "8080"
       PUBLIC_WEBSITE_HOST: "0.0.0.0"
+      HASHAVATAR_TRUSTED_PROXIES: "10.89.42.0/24"
     restart: unless-stopped
     networks:
       - hashavatar
@@ -42,3 +43,6 @@ volumes:
 networks:
   hashavatar:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 10.89.42.0/24

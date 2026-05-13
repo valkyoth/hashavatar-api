@@ -15,6 +15,7 @@ aws-sdk-s3 = { version = "1.131.0", default-features = false, features = ["rt-to
 hashavatar = "0.5.0"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "query", "json"] }
+ipnet = { version = "2.12.0", default-features = false }
 lru = { version = "0.16.4", default-features = false }
 serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.149", default-features = false, features = ["std"] }

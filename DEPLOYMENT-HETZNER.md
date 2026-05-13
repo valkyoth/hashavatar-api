@@ -76,5 +76,7 @@ podman-compose up -d --build
 
 - Fluxheim listens publicly on `80` and `443`
 - the Rust app stays internal on port `8080`
+- `HASHAVATAR_TRUSTED_PROXIES` is set to the private Compose network so the app
+  only honors forwarded client IP headers from Fluxheim
 - if Cloudflare is in front, keep DNS proxied and apply the cache rules from [`CLOUDFLARE.md`](./CLOUDFLARE.md)
 - the avatar endpoints are deterministic, so they are safe to cache hard at the edge

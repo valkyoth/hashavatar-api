@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use aws_sdk_s3::Client as S3Client;
 use aws_sdk_s3::config::Builder as S3ConfigBuilder;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
-use axum::extract::{Path, Query, State};
+use axum::extract::{ConnectInfo, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::get;
@@ -22,11 +22,13 @@ use hashavatar::{
     render_avatar_svg_for_namespace,
 };
 use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
+use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 const DEFAULT_HOST: &str = "0.0.0.0";
 const DEFAULT_PORT: u16 = 8080;
+const TRUSTED_PROXIES_ENV: &str = "HASHAVATAR_TRUSTED_PROXIES";
 const DEFAULT_ID: &str = "cat@hashavatar.app";
 const SITE_NAME: &str = "hashavatar.app";
 const SITE_URL: &str = "https://hashavatar.app";
@@ -44,6 +46,7 @@ const PRESET_PAGE_SIZE: usize = 12;
 
 struct AppState {
     storage: Option<Arc<S3Storage>>,
+    trusted_proxies: TrustedProxies,
     rate_limiter: RateLimiter,
     metrics: Metrics,
 }
@@ -52,6 +55,7 @@ impl Clone for AppState {
     fn clone(&self) -> Self {
         Self {
             storage: self.storage.clone(),
+            trusted_proxies: self.trusted_proxies.clone(),
             rate_limiter: self.rate_limiter.clone(),
             metrics: self.metrics.clone(),
         }
@@ -69,6 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = AppState {
         storage: S3Storage::from_env().await?.map(Arc::new),
+        trusted_proxies: TrustedProxies::from_env()?,
         rate_limiter: RateLimiter::default(),
         metrics: Metrics::default(),
     };
@@ -94,7 +99,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let listener = tokio::net::TcpListener::bind(address).await?;
     println!("{SITE_NAME} listening on http://{address}");
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 
@@ -338,6 +347,46 @@ struct RateBucket {
     count: u32,
 }
 
+#[derive(Clone, Default)]
+struct TrustedProxies {
+    networks: Arc<Vec<IpNet>>,
+}
+
+impl TrustedProxies {
+    fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        match std::env::var(TRUSTED_PROXIES_ENV) {
+            Ok(raw) => Self::parse(&raw)
+                .map_err(|message| format!("{TRUSTED_PROXIES_ENV}: {message}").into()),
+            Err(std::env::VarError::NotPresent) => Ok(Self::default()),
+            Err(error) => Err(Box::new(error)),
+        }
+    }
+
+    fn parse(raw: &str) -> Result<Self, String> {
+        let mut networks = Vec::new();
+        for value in raw.split([',', ' ', '\n', '\t']) {
+            let value = value.trim();
+            if value.is_empty() {
+                continue;
+            }
+
+            let network = value
+                .parse::<IpNet>()
+                .or_else(|_| value.parse::<IpAddr>().map(IpNet::from))
+                .map_err(|_| format!("invalid trusted proxy address or CIDR: {value}"))?;
+            networks.push(network);
+        }
+
+        Ok(Self {
+            networks: Arc::new(networks),
+        })
+    }
+
+    fn contains(&self, ip: IpAddr) -> bool {
+        self.networks.iter().any(|network| network.contains(&ip))
+    }
+}
+
 impl Default for RateLimiter {
     fn default() -> Self {
         Self::with_capacity(MAX_RATE_LIMIT_BUCKETS)
@@ -459,10 +508,11 @@ impl Metrics {
 async fn enforce_limits(
     state: &AppState,
     headers: &HeaderMap,
+    peer_ip: IpAddr,
     route: RateLimitRoute,
     request: &AvatarRequest,
 ) -> Result<(), Response> {
-    let ip = client_ip(headers);
+    let ip = client_ip(headers, peer_ip, &state.trusted_proxies);
     let key = format!(
         "{}:{}:{}:{}",
         route.as_str(),
@@ -483,7 +533,11 @@ async fn enforce_limits(
     }
 }
 
-fn client_ip(headers: &HeaderMap) -> String {
+fn client_ip(headers: &HeaderMap, peer_ip: IpAddr, trusted_proxies: &TrustedProxies) -> String {
+    if !trusted_proxies.contains(peer_ip) {
+        return peer_ip.to_string();
+    }
+
     for header_name in ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"] {
         if let Some(value) = headers
             .get(header_name)
@@ -491,16 +545,17 @@ fn client_ip(headers: &HeaderMap) -> String {
             && let Some(first) = value.split(',').next()
         {
             let trimmed = first.trim();
-            if !trimmed.is_empty() {
-                return trimmed.to_string();
+            if let Ok(ip) = trimmed.parse::<IpAddr>() {
+                return ip.to_string();
             }
         }
     }
-    "anonymous".to_string()
+    peer_ip.to_string()
 }
 
 async fn query_avatar(
     State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Query(query): Query<AvatarQuery>,
 ) -> Response {
@@ -509,7 +564,14 @@ async fn query_avatar(
         Err(message) => return bad_request(&message),
     };
 
-    if let Err(response) = enforce_limits(&state, &headers, RateLimitRoute::Avatar, &request).await
+    if let Err(response) = enforce_limits(
+        &state,
+        &headers,
+        peer_addr.ip(),
+        RateLimitRoute::Avatar,
+        &request,
+    )
+    .await
     {
         return response;
     }
@@ -518,6 +580,7 @@ async fn query_avatar(
 
 async fn query_avatar_link(
     State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Query(query): Query<AvatarQuery>,
 ) -> Response {
@@ -526,8 +589,14 @@ async fn query_avatar_link(
         Err(message) => return bad_request(&message),
     };
 
-    if let Err(response) =
-        enforce_limits(&state, &headers, RateLimitRoute::StorageLink, &request).await
+    if let Err(response) = enforce_limits(
+        &state,
+        &headers,
+        peer_addr.ip(),
+        RateLimitRoute::StorageLink,
+        &request,
+    )
+    .await
     {
         return response;
     }
@@ -536,6 +605,7 @@ async fn query_avatar_link(
 
 async fn path_avatar(
     State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(path): Path<PathAvatar>,
 ) -> Response {
@@ -560,7 +630,14 @@ async fn path_avatar(
         redirect: false,
     };
 
-    if let Err(response) = enforce_limits(&state, &headers, RateLimitRoute::Avatar, &request).await
+    if let Err(response) = enforce_limits(
+        &state,
+        &headers,
+        peer_addr.ip(),
+        RateLimitRoute::Avatar,
+        &request,
+    )
+    .await
     {
         return response;
     }
@@ -2391,5 +2468,50 @@ mod tests {
         }
 
         assert_eq!(limiter.len(), 32);
+    }
+
+    #[test]
+    fn client_ip_ignores_forwarded_headers_from_untrusted_peers() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", HeaderValue::from_static("203.0.113.99"));
+
+        let peer_ip = IpAddr::from([198, 51, 100, 10]);
+        let trusted_proxies = TrustedProxies::default();
+
+        assert_eq!(
+            client_ip(&headers, peer_ip, &trusted_proxies),
+            "198.51.100.10"
+        );
+    }
+
+    #[test]
+    fn client_ip_honors_forwarded_headers_from_trusted_proxies() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("203.0.113.99, 10.89.42.10"),
+        );
+
+        let peer_ip = IpAddr::from([10, 89, 42, 10]);
+        let trusted_proxies = TrustedProxies::parse("10.89.42.0/24").expect("trusted proxy CIDR");
+
+        assert_eq!(
+            client_ip(&headers, peer_ip, &trusted_proxies),
+            "203.0.113.99"
+        );
+    }
+
+    #[test]
+    fn client_ip_falls_back_to_peer_when_trusted_header_is_invalid() {
+        let mut headers = HeaderMap::new();
+        headers.insert("cf-connecting-ip", HeaderValue::from_static("not an ip"));
+
+        let peer_ip = IpAddr::from([10, 89, 42, 10]);
+        let trusted_proxies = TrustedProxies::parse("10.89.42.0/24").expect("trusted proxy CIDR");
+
+        assert_eq!(
+            client_ip(&headers, peer_ip, &trusted_proxies),
+            "10.89.42.10"
+        );
     }
 }

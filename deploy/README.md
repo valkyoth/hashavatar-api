@@ -10,6 +10,11 @@ It runs two containers on one private network:
   `www.hashavatar.app` to `hashavatar.app`, and proxies traffic to
   `hashavatar:8080`.
 
+The app uses the direct peer IP for rate limiting by default. The compose file
+sets `HASHAVATAR_TRUSTED_PROXIES=10.89.42.0/24` and pins the private network to
+that subnet so the app only honors `X-Forwarded-For` style headers from the
+Fluxheim network. Do not expose the app container port directly to the internet.
+
 ## Files
 
 - `podman-compose.yml`: starts the app and Fluxheim gateway.

@@ -6,12 +6,20 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
 jobs:
   rust:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.95.0
@@ -20,9 +28,22 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install security tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,cargo-audit
 
       - name: Format
-        run: cargo fmt --check
+        run: cargo fmt --all --check
+
+      - name: Validate release metadata
+        run: scripts/validate-release-metadata.sh
+
+      - name: Check Markdown links
+        run: perl scripts/check-doc-links.pl
 
       - name: Check
         run: cargo check
@@ -33,14 +54,8 @@ jobs:
       - name: Test
         run: cargo test
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-
       - name: Audit
         run: cargo audit
 
-      - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
-
-      - name: License Check
-        run: cargo deny check licenses
+      - name: Dependency policy
+        run: cargo deny check

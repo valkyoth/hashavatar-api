@@ -7,11 +7,7 @@ Thanks for helping improve `hashavatar`.
 Use Rust 1.95 or newer.
 
 ```bash
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-cargo audit
-cargo deny check licenses
+scripts/checks.sh
 ```
 
 ## Pull Requests

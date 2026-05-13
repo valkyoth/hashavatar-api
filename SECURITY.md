@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes are expected for the latest published `0.4.x` release.
+Security fixes are expected for the latest published `0.5.x` release.
 
 ## Reporting a Vulnerability
 
@@ -22,3 +22,10 @@ Relevant security issues include:
 - license or provenance concerns that affect safe redistribution
 
 Please include reproduction steps, affected versions, and any known mitigations.
+
+## Security Checks
+
+CI runs formatting, clippy, tests, `cargo deny check`, and `cargo audit`.
+GitHub CodeQL default setup should be enabled in repository security settings;
+keep only one active CodeQL configuration to avoid duplicate code-scanning
+uploads.

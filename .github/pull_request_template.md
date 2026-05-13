@@ -4,11 +4,7 @@
 
 ## Validation
 
-- [ ] `cargo fmt --check`
-- [ ] `cargo clippy --all-targets -- -D warnings`
-- [ ] `cargo test`
-- [ ] `cargo audit`
-- [ ] `cargo deny check licenses`
+- [ ] `scripts/checks.sh`
 
 ## Notes
 

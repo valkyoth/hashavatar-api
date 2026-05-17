@@ -46,9 +46,8 @@ grep -q 'internal_error_does_not_expose_details' src/main.rs \
 grep -q 'build_avatar_asset_rejects_oversized_namespace' src/main.rs \
     || fail "hashavatar namespace validation regression test is missing"
 
-grep -q 'github/codeql-action/init@v4' .github/workflows/codeql.yml \
-    || fail "default CodeQL workflow must use github/codeql-action/init@v4"
-grep -q 'github/codeql-action/analyze@v4' .github/workflows/codeql.yml \
-    || fail "default CodeQL workflow must use github/codeql-action/analyze@v4"
+if [ -e .github/workflows/codeql.yml ] || [ -e .github/codeql/codeql-config.yml ]; then
+    fail "CodeQL default setup is enabled in GitHub; remove repo-level advanced CodeQL configuration"
+fi
 
 echo "security invariants: ok"

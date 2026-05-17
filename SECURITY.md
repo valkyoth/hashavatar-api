@@ -27,7 +27,8 @@ Please include reproduction steps, affected versions, and any known mitigations.
 
 CI runs formatting, release metadata validation, documentation link checks,
 security invariant checks, clippy, tests, `cargo deny check`, `cargo audit`, a
-local runtime smoke test, SBOM generation, reproducible release build checks,
-and the default CodeQL workflow.
+local runtime smoke test, SBOM generation, and reproducible release build
+checks. GitHub CodeQL default setup is enabled in repository security settings;
+do not add a repo-level CodeQL workflow unless default setup is disabled first.
 
 See `docs/SECURITY_CONTROLS.md` for the service-specific control map.

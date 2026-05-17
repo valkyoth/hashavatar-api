@@ -8,7 +8,7 @@ Security fixes are expected for the latest published `0.5.x` release.
 
 Please report security issues privately through GitHub Security Advisories for:
 
-`https://github.com/valkyoth/hashavatar/security/advisories/new`
+`https://github.com/valkyoth/hashavatar-api/security/advisories/new`
 
 If GitHub advisories are unavailable, open a minimal public issue that asks for a private contact path without disclosing exploit details.
 
@@ -25,7 +25,9 @@ Please include reproduction steps, affected versions, and any known mitigations.
 
 ## Security Checks
 
-CI runs formatting, clippy, tests, `cargo deny check`, and `cargo audit`.
-GitHub CodeQL default setup should be enabled in repository security settings;
-keep only one active CodeQL configuration to avoid duplicate code-scanning
-uploads.
+CI runs formatting, release metadata validation, documentation link checks,
+security invariant checks, clippy, tests, `cargo deny check`, `cargo audit`, a
+local runtime smoke test, SBOM generation, reproducible release build checks,
+and the default CodeQL workflow.
+
+See `docs/SECURITY_CONTROLS.md` for the service-specific control map.

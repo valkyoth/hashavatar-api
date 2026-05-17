@@ -11,8 +11,9 @@ use aws_sdk_s3::Client as S3Client;
 use aws_sdk_s3::config::Builder as S3ConfigBuilder;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
-use axum::extract::{ConnectInfo, Path, Query, State};
+use axum::extract::{ConnectInfo, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::get;
 use axum::{Json, Router};
@@ -98,7 +99,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/v1/avatar", get(query_avatar))
         .route("/v1/avatar/link", get(query_avatar_link))
         .route("/avatar/{kind}/{identity}/{format}", get(path_avatar))
-        .with_state(state);
+        .with_state(state)
+        .layer(middleware::from_fn(add_security_headers));
 
     let listener = tokio::net::TcpListener::bind(address).await?;
     tracing::info!(service = SITE_NAME, %address, "listening");
@@ -112,6 +114,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn init_logging() {
     let _ = tracing_subscriber::fmt::try_init();
+}
+
+async fn add_security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+
+    headers.insert(
+        header::HeaderName::from_static("content-security-policy"),
+        HeaderValue::from_static(
+            "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; form-action 'self'",
+        ),
+    );
+    headers.insert(
+        header::HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("x-frame-options"),
+        HeaderValue::from_static("DENY"),
+    );
+
+    response
 }
 
 async fn index() -> Html<String> {
@@ -246,13 +278,17 @@ async fn openapi_json() -> impl IntoResponse {
 
 async fn og_png(Query(query): Query<OgQuery>) -> Response {
     let title_id = query.id.unwrap_or_else(|| DEFAULT_ID.to_string());
-    let namespace = AvatarNamespace::new(
+    let namespace = match AvatarNamespace::new(
         query.tenant.as_deref().unwrap_or(DEFAULT_NAMESPACE_TENANT),
         query
             .style_version
             .as_deref()
             .unwrap_or(DEFAULT_NAMESPACE_STYLE),
-    );
+    ) {
+        Ok(namespace) => namespace,
+        Err(error) => return bad_request(&error.to_string()),
+    };
+    let spec = AvatarSpec::new(220, 220, 0).expect("Open Graph avatar spec should be valid");
 
     let mut canvas: RgbaImage = ImageBuffer::from_pixel(1200, 630, Rgba([251, 246, 238, 255]));
     draw_rect(&mut canvas, 0, 0, 1200, 630, Rgba([242, 236, 228, 255]));
@@ -268,8 +304,8 @@ async fn og_png(Query(query): Query<OgQuery>) -> Response {
         .into_iter()
         .enumerate()
     {
-        let avatar = render_avatar_for_namespace(
-            AvatarSpec::new(220, 220, 0),
+        let avatar = match render_avatar_for_namespace(
+            spec,
             namespace,
             &title_id,
             AvatarOptions::new(
@@ -280,7 +316,10 @@ async fn og_png(Query(query): Query<OgQuery>) -> Response {
                     AvatarBackground::Themed
                 },
             ),
-        );
+        ) {
+            Ok(avatar) => avatar,
+            Err(error) => return bad_request(&error.to_string()),
+        };
         overlay(&mut canvas, &avatar, 110 + idx as u32 * 260, 180);
     }
 
@@ -774,9 +813,10 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
         return Err("size must be between 64 and 1024".to_string());
     }
 
-    let spec = AvatarSpec::new(request.size, request.size, 0);
+    let spec = AvatarSpec::new(request.size, request.size, 0).map_err(|error| error.to_string())?;
     let options = AvatarOptions::new(request.kind, request.background);
-    let namespace = AvatarNamespace::new(&request.namespace_tenant, &request.namespace_style);
+    let namespace = AvatarNamespace::new(&request.namespace_tenant, &request.namespace_style)
+        .map_err(|error| error.to_string())?;
     let cache_key = format!(
         "{}:{}:{}:{}:{}:{}:{}",
         request.namespace_tenant,
@@ -834,7 +874,9 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
             "image/gif",
         ),
         AvatarRequestFormat::Svg => (
-            render_avatar_svg_for_namespace(spec, namespace, identity, options).into_bytes(),
+            render_avatar_svg_for_namespace(spec, namespace, identity, options)
+                .map_err(|error| format!("avatar generation failed: {error}"))?
+                .into_bytes(),
             "image/svg+xml",
         ),
     };
@@ -2438,6 +2480,20 @@ impl HeaderName {
 mod tests {
     use super::*;
 
+    fn test_avatar_request(format: AvatarRequestFormat) -> AvatarRequest {
+        AvatarRequest {
+            identity: DEFAULT_ID.to_string(),
+            namespace_tenant: DEFAULT_NAMESPACE_TENANT.to_string(),
+            namespace_style: DEFAULT_NAMESPACE_STYLE.to_string(),
+            kind: AvatarKind::Cat,
+            background: AvatarBackground::Themed,
+            format,
+            size: 256,
+            persist: false,
+            redirect: false,
+        }
+    }
+
     #[test]
     fn rate_limiter_enforces_per_key_limit() {
         let limiter = RateLimiter::with_capacity(8);
@@ -2533,5 +2589,28 @@ mod tests {
         assert_eq!(body, INTERNAL_ERROR_MESSAGE);
         assert!(!body.contains("hashavatar-private"));
         assert!(!body.contains("eu-north-1"));
+    }
+
+    #[test]
+    fn build_avatar_asset_renders_svg_with_hashavatar_0_6() {
+        let request = test_avatar_request(AvatarRequestFormat::Svg);
+        let asset = build_avatar_asset(&request).expect("svg avatar should render");
+        let body = std::str::from_utf8(&asset.body).expect("svg should be utf8");
+
+        assert_eq!(asset.content_type, "image/svg+xml");
+        assert!(body.starts_with("<svg "));
+    }
+
+    #[test]
+    fn build_avatar_asset_rejects_oversized_namespace() {
+        let mut request = test_avatar_request(AvatarRequestFormat::Svg);
+        request.namespace_tenant = "x".repeat(129);
+
+        let error = match build_avatar_asset(&request) {
+            Ok(_) => panic!("oversized tenant should be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("namespace tenant must be at most 128 bytes"));
     }
 }

@@ -1,9 +1,0 @@
-name: hashavatar-api-codeql-default
-
-paths:
-  - src
-  - Cargo.toml
-  - Cargo.lock
-
-paths-ignore:
-  - target

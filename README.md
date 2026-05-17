@@ -30,7 +30,7 @@ Supported backgrounds:
 - `light`
 - `transparent`
 
-Supported avatar families are provided by `hashavatar 0.5.0`, including `cat`, `dog`, `robot`, `fox`, `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`, `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`, `pizza`, `icecream`, `octopus`, and `knight`.
+Supported avatar families are provided by `hashavatar 0.6.0`, including `cat`, `dog`, `robot`, `fox`, `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`, `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`, `pizza`, `icecream`, `octopus`, and `knight`.
 
 ## Example URLs
 
@@ -103,12 +103,13 @@ direct peer address matches this allowlist.
 Recommended local checks:
 
 ```bash
-cargo fmt --check
-cargo check
-cargo clippy --all-targets -- -D warnings
-cargo audit
-cargo deny check
+scripts/checks.sh
+scripts/smoke_local.sh
+scripts/stable_release_gate.sh
 ```
+
+Security controls and release evidence checks are documented in
+[`docs/SECURITY_CONTROLS.md`](docs/SECURITY_CONTROLS.md).
 
 ## Running On Your Own Server
 

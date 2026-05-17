@@ -20,6 +20,14 @@ grep -q 'INTERNAL_ERROR_MESSAGE' src/main.rs \
     || fail "generic internal error message constant is missing"
 grep -q 'fn add_security_headers' src/main.rs \
     || fail "security header middleware is missing"
+grep -q 'MAX_ID_BYTES' src/main.rs \
+    || fail "identity byte limit is missing"
+grep -q 'MAX_NAMESPACE_COMPONENT_BYTES' src/main.rs \
+    || fail "namespace component byte limit is missing"
+grep -q 'fn is_valid_namespace_component' src/main.rs \
+    || fail "path-safe namespace validation is missing"
+grep -q 'identity.contains' src/main.rs \
+    || fail "raw email-shaped identity rejection is missing"
 
 internal_error_body="$(
     awk '
@@ -45,6 +53,8 @@ grep -q 'internal_error_does_not_expose_details' src/main.rs \
     || fail "internal error disclosure regression test is missing"
 grep -q 'build_avatar_asset_rejects_oversized_namespace' src/main.rs \
     || fail "hashavatar namespace validation regression test is missing"
+grep -q 'object_key_uses_full_sha256_digest' src/main.rs \
+    || fail "full object-key digest regression test is missing"
 
 if [ -e .github/workflows/codeql.yml ] || [ -e .github/codeql/codeql-config.yml ]; then
     fail "CodeQL default setup is enabled in GitHub; remove repo-level advanced CodeQL configuration"

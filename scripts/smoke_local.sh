@@ -64,7 +64,7 @@ grep -q '"status":"ok"' "$TMP_DIR/health.json"
 grep -q '"service":"hashavatar-api"' "$TMP_DIR/health.json"
 
 curl -sSf -D "$TMP_DIR/svg.headers" \
-    "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&kind=cat&background=themed&format=svg&size=256" \
+    "http://127.0.0.1:$port/v1/avatar?id=demo-cat&kind=cat&background=themed&format=svg&size=256" \
     -o "$TMP_DIR/avatar.svg"
 grep -q '^<svg ' "$TMP_DIR/avatar.svg"
 grep -qi '^content-type: image/svg+xml' "$TMP_DIR/svg.headers"
@@ -74,19 +74,29 @@ grep -qi '^referrer-policy: no-referrer' "$TMP_DIR/svg.headers"
 grep -qi '^content-security-policy:' "$TMP_DIR/svg.headers"
 
 curl -sSf -D "$TMP_DIR/png.headers" \
-    "http://127.0.0.1:$port/v1/avatar?id=robot@hashavatar.app&kind=robot&background=white&format=png&size=128" \
+    "http://127.0.0.1:$port/v1/avatar?id=demo-robot&kind=robot&background=white&format=png&size=128" \
     -o "$TMP_DIR/avatar.png"
 grep -qi '^content-type: image/png' "$TMP_DIR/png.headers"
 test -s "$TMP_DIR/avatar.png"
 
 bad_status="$(
     curl -sS -o "$TMP_DIR/bad-tenant.txt" -w '%{http_code}' \
-        "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&tenant=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx&format=svg"
+        "http://127.0.0.1:$port/v1/avatar?id=demo-cat&tenant=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx&format=svg"
 )"
 if [ "$bad_status" != "400" ]; then
     echo "local smoke failed: oversized tenant returned $bad_status, expected 400" >&2
     exit 1
 fi
-grep -q 'namespace tenant must be at most 128 bytes' "$TMP_DIR/bad-tenant.txt"
+grep -q 'tenant must be 1-64 ASCII' "$TMP_DIR/bad-tenant.txt"
+
+email_status="$(
+    curl -sS -o "$TMP_DIR/bad-email.txt" -w '%{http_code}' \
+        "http://127.0.0.1:$port/v1/avatar?id=person@example.com&format=svg"
+)"
+if [ "$email_status" != "400" ]; then
+    echo "local smoke failed: raw email identity returned $email_status, expected 400" >&2
+    exit 1
+fi
+grep -q 'raw email addresses' "$TMP_DIR/bad-email.txt"
 
 echo "local smoke: ok"

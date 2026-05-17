@@ -30,7 +30,7 @@ use sha2::{Digest, Sha256};
 const DEFAULT_HOST: &str = "0.0.0.0";
 const DEFAULT_PORT: u16 = 8080;
 const TRUSTED_PROXIES_ENV: &str = "HASHAVATAR_TRUSTED_PROXIES";
-const DEFAULT_ID: &str = "cat@hashavatar.app";
+const DEFAULT_ID: &str = "demo-cat";
 const SITE_NAME: &str = "hashavatar.app";
 const SITE_URL: &str = "https://hashavatar.app";
 const REPOSITORY_URL: &str = "https://github.com/valkyoth/hashavatar-api";
@@ -44,6 +44,8 @@ const MAX_RATE_LIMIT_BUCKETS: usize = 16_384;
 const INTERNAL_ERROR_MESSAGE: &str = "An internal server error occurred.";
 const MIN_SIZE: u32 = 64;
 const MAX_SIZE: u32 = 1024;
+const MAX_ID_BYTES: usize = 512;
+const MAX_NAMESPACE_COMPONENT_BYTES: usize = 64;
 const PRESET_PAGE_SIZE: usize = 12;
 
 struct AppState {
@@ -449,7 +451,13 @@ impl RateLimiter {
 
     fn check(&self, key: String, limit: u32) -> bool {
         let now = Instant::now();
-        let mut buckets = self.buckets.lock().expect("rate limiter poisoned");
+        let mut buckets = match self.buckets.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("recovering poisoned rate limiter state");
+                poisoned.into_inner()
+            }
+        };
         let bucket = buckets.get_or_insert_mut(key, || RateBucket {
             started_at: now,
             count: 0,
@@ -467,7 +475,10 @@ impl RateLimiter {
 
     #[cfg(test)]
     fn len(&self) -> usize {
-        self.buckets.lock().expect("rate limiter poisoned").len()
+        match self.buckets.lock() {
+            Ok(guard) => guard.len(),
+            Err(poisoned) => poisoned.into_inner().len(),
+        }
     }
 }
 
@@ -675,6 +686,9 @@ async fn path_avatar(
         persist: false,
         redirect: false,
     };
+    if let Err(message) = request.validate() {
+        return bad_request(&message);
+    }
 
     if let Err(response) = enforce_limits(
         &state,
@@ -806,9 +820,10 @@ async fn serve_avatar_link(state: AppState, request: AvatarRequest) -> Response 
 
 fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
     let identity = request.identity.trim();
-    if identity.is_empty() {
-        return Err("missing identity".to_string());
-    }
+    validate_identity(identity)?;
+    validate_namespace_component("tenant", &request.namespace_tenant)?;
+    validate_namespace_component("style_version", &request.namespace_style)?;
+
     if !(MIN_SIZE..=MAX_SIZE).contains(&request.size) {
         return Err("size must be between 64 and 1024".to_string());
     }
@@ -935,8 +950,8 @@ fn object_key_for(request: &AvatarRequest, identity: &str) -> String {
         )
         .as_bytes(),
     );
-    let mut encoded = String::with_capacity(20);
-    for byte in &digest[..10] {
+    let mut encoded = String::with_capacity(64);
+    for byte in digest {
         encoded.push_str(&format!("{byte:02x}"));
     }
     format!(
@@ -949,6 +964,41 @@ fn object_key_for(request: &AvatarRequest, identity: &str) -> String {
         encoded,
         request.format.as_str()
     )
+}
+
+fn validate_identity(identity: &str) -> Result<(), String> {
+    if identity.is_empty() {
+        return Err("missing identity".to_string());
+    }
+    if identity.len() > MAX_ID_BYTES {
+        return Err(format!(
+            "identity must be at most {MAX_ID_BYTES} bytes; send a stable internal id or one-way hash"
+        ));
+    }
+    if identity.contains('@') {
+        return Err(
+            "identity must not contain raw email addresses; send a stable internal id or one-way hash"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_namespace_component(name: &str, value: &str) -> Result<(), String> {
+    if !is_valid_namespace_component(value) {
+        return Err(format!(
+            "{name} must be 1-{MAX_NAMESPACE_COMPONENT_BYTES} ASCII letters, digits, hyphens, or underscores"
+        ));
+    }
+    Ok(())
+}
+
+fn is_valid_namespace_component(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_NAMESPACE_COMPONENT_BYTES
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
 }
 
 fn bad_request(message: &str) -> Response {
@@ -1212,7 +1262,7 @@ fn kind_options_html(selected: AvatarKind) -> String {
         .into_iter()
         .map(|kind| {
             format!(
-                r#"<option value="{value}" data-identity="{value}@hashavatar.app"{selected}>{label}</option>"#,
+                r#"<option value="{value}" data-identity="demo-{value}"{selected}>{label}</option>"#,
                 value = kind.as_str(),
                 label = avatar_kind_label(kind),
                 selected = selected_attr(kind == selected),
@@ -1274,7 +1324,7 @@ fn preset_examples() -> Vec<PresetExample> {
         .map(|kind| PresetExample {
             label: avatar_kind_label(kind),
             id: match kind {
-                AvatarKind::Icecream => "icecream@hashavatar.app",
+                AvatarKind::Icecream => "demo-icecream",
                 _ => kind.as_str(),
             },
             kind: kind.as_str(),
@@ -1293,29 +1343,29 @@ fn preset_examples() -> Vec<PresetExample> {
         })
         .map(|mut preset| {
             preset.id = match preset.kind {
-                "cat" => "cat@hashavatar.app",
-                "dog" => "dog@hashavatar.app",
-                "robot" => "robot@hashavatar.app",
-                "fox" => "fox@hashavatar.app",
-                "alien" => "alien@hashavatar.app",
-                "monster" => "monster@hashavatar.app",
-                "ghost" => "ghost@hashavatar.app",
-                "slime" => "slime@hashavatar.app",
-                "bird" => "bird@hashavatar.app",
-                "wizard" => "wizard@hashavatar.app",
-                "skull" => "skull@hashavatar.app",
-                "paws" => "paws@hashavatar.app",
-                "planet" => "planet@hashavatar.app",
-                "rocket" => "rocket@hashavatar.app",
-                "mushroom" => "mushroom@hashavatar.app",
-                "cactus" => "cactus@hashavatar.app",
-                "frog" => "frog@hashavatar.app",
-                "panda" => "panda@hashavatar.app",
-                "cupcake" => "cupcake@hashavatar.app",
-                "pizza" => "pizza@hashavatar.app",
-                "icecream" => "icecream@hashavatar.app",
-                "octopus" => "octopus@hashavatar.app",
-                "knight" => "knight@hashavatar.app",
+                "cat" => "demo-cat",
+                "dog" => "demo-dog",
+                "robot" => "demo-robot",
+                "fox" => "demo-fox",
+                "alien" => "demo-alien",
+                "monster" => "demo-monster",
+                "ghost" => "demo-ghost",
+                "slime" => "demo-slime",
+                "bird" => "demo-bird",
+                "wizard" => "demo-wizard",
+                "skull" => "demo-skull",
+                "paws" => "demo-paws",
+                "planet" => "demo-planet",
+                "rocket" => "demo-rocket",
+                "mushroom" => "demo-mushroom",
+                "cactus" => "demo-cactus",
+                "frog" => "demo-frog",
+                "panda" => "demo-panda",
+                "cupcake" => "demo-cupcake",
+                "pizza" => "demo-pizza",
+                "icecream" => "demo-icecream",
+                "octopus" => "demo-octopus",
+                "knight" => "demo-knight",
                 _ => DEFAULT_ID,
             };
             preset
@@ -1463,7 +1513,7 @@ fn render_page_html(
 }
 
 fn render_index_html() -> String {
-    let description = "Deterministic procedural avatars for emails, usernames, and internal ids. Generate 23 avatar families as WebP, PNG, JPEG, GIF, or SVG.";
+    let description = "Deterministic procedural avatars for opaque user ids, stable usernames, and one-way hashes. Generate 23 avatar families as WebP, PNG, JPEG, GIF, or SVG.";
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -1711,18 +1761,18 @@ fn render_index_html() -> String {
         <div class="eyebrow">hashavatar.app</div>
         <h1>Generate A Public Avatar In Seconds</h1>
         <p>
-          Turn any email, username, or stable identifier into a deterministic avatar URL.
+          Turn any opaque user id, stable username, or one-way hash into a deterministic avatar URL.
           Choose the style, background, output format, and size, then copy the URL, download the result, or create a signed object-storage link.
         </p>
         <p>
-          Privacy-conscious integration tip: avoid sending raw emails when you do not need to. Hash or namespace your internal ids client-side and use <code>tenant</code> plus <code>style_version</code> for separation.
+          Privacy-conscious integration tip: raw email addresses are rejected. Hash or namespace your internal ids client-side and use <code>tenant</code> plus <code>style_version</code> for separation.
         </p>
 
         <div class="generator">
           <div class="field-grid full">
             <div>
               <label for="identity">Identity</label>
-              <input id="identity" type="text" value="{id}" placeholder="cat@hashavatar.app" spellcheck="false" autocomplete="off" />
+              <input id="identity" type="text" value="{id}" placeholder="demo-cat" spellcheck="false" autocomplete="off" />
             </div>
           </div>
 
@@ -2044,17 +2094,17 @@ fn render_help_html() -> String {
   <section class="card">
     <h2>Basic URL</h2>
     <p>Use the query endpoint when you want a simple public image URL.</p>
-    <pre><code>https://{site}/v1/avatar?id=robot@hashavatar.app&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+    <pre><code>https://{site}/v1/avatar?id=demo-robot&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
     <h2>Path Style URL</h2>
     <p>Use the path form if you prefer cleaner embed URLs.</p>
-    <pre><code>https://{site}/avatar/fox/fox@hashavatar.app/svg</code></pre>
+    <pre><code>https://{site}/avatar/fox/demo-fox/svg</code></pre>
   </section>
   <section class="card">
     <h2>HTML Example</h2>
     <pre><code>&lt;img
-  src="https://{site}/v1/avatar?id=monster@hashavatar.app&amp;kind=monster&amp;background=themed&amp;format=webp&amp;size=256"
+  src="https://{site}/v1/avatar?id=demo-monster&amp;kind=monster&amp;background=themed&amp;format=webp&amp;size=256"
   alt="Generated monster avatar"
 /&gt;</code></pre>
   </section>
@@ -2062,7 +2112,7 @@ fn render_help_html() -> String {
     <h2>JavaScript Example</h2>
     <pre><code>const avatarUrl = new URL("https://{site}/v1/avatar");
 avatarUrl.search = new URLSearchParams({{
-  id: user.email,
+  id: user.publicAvatarId,
   kind: "robot",
   background: "white",
   format: "webp",
@@ -2073,7 +2123,7 @@ avatarUrl.search = new URLSearchParams({{
 <section class="card">
   <h2>Supported Parameters</h2>
   <ul>
-    <li><code>id</code>: any stable identifier such as an email, username, or internal user id</li>
+    <li><code>id</code>: an opaque stable identifier such as an internal user id, username, or one-way hash; raw email addresses are rejected</li>
     <li><code>tenant</code>: optional namespace partition for multi-tenant apps</li>
     <li><code>style_version</code>: optional style namespace such as <code>v2</code></li>
     <li><code>kind</code>: any public hashavatar family, including <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>planet</code>, <code>rocket</code>, <code>frog</code>, <code>panda</code>, <code>cupcake</code>, <code>pizza</code>, <code>octopus</code>, and <code>knight</code></li>
@@ -2085,7 +2135,7 @@ avatarUrl.search = new URLSearchParams({{
 <section class="card">
   <h2>Signed Storage Links</h2>
   <p>If this deployment has object storage configured, request a presigned storage link from <code>/v1/avatar/link</code>. That endpoint stores the generated object and returns JSON with the signed URL and object key.</p>
-  <pre><code>GET https://{site}/v1/avatar/link?id=robot@hashavatar.app&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+  <pre><code>GET https://{site}/v1/avatar/link?id=demo-robot&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
 </section>
 <section class="card">
   <h2>Open Source</h2>
@@ -2122,12 +2172,12 @@ fn render_docs_html() -> String {
   <section class="card">
     <h2>Namespace Support</h2>
     <p>Use <code>tenant</code> and <code>style_version</code> to keep visual identity spaces separate between products or rollout phases.</p>
-    <pre><code>GET https://{site}/v1/avatar?id=wizard@hashavatar.app&amp;tenant=acme&amp;style_version=v2&amp;kind=wizard&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+    <pre><code>GET https://{site}/v1/avatar?id=demo-wizard&amp;tenant=acme&amp;style_version=v2&amp;kind=wizard&amp;background=white&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
     <h2>Anonymous IDs</h2>
-    <p>Prefer sending an internal stable id or a one-way application hash instead of a raw email when privacy matters.</p>
-    <pre><code>id = sha256(lowercase(email))</code></pre>
+    <p>Send an internal stable id or a one-way application hash instead of raw personal data.</p>
+  <pre><code>id = sha256(lowercase(email))</code></pre>
   </section>
   <section class="card">
     <h2>Rate Limits</h2>
@@ -2198,7 +2248,7 @@ fn render_privacy_html() -> String {
 <section class="card">
   <h2>What The Service Receives</h2>
   <ul>
-    <li>the identifier you put in the request, such as an email address or username</li>
+    <li>the opaque identifier you put in the request, such as an internal id, username, or one-way hash</li>
     <li>request parameters such as avatar type, size, format, and background</li>
     <li>standard HTTP metadata handled by the server, reverse proxy, and CDN, such as IP address, user agent, referrer, and request timing</li>
   </ul>
@@ -2214,7 +2264,7 @@ fn render_privacy_html() -> String {
 </section>
 <section class="card">
   <h2>What To Avoid Sending</h2>
-  <p>If you do not want personal data to appear in logs or URLs, do not send raw personal data as the <code>id</code> value. A common pattern is to send an internal stable id or a one-way application hash instead of a plain email address.</p>
+  <p>Raw email addresses are rejected. Do not send personal data as the <code>id</code> value; send an internal stable id or a one-way application hash instead.</p>
 </section>
 <section class="card">
   <h2>Repository And Crate</h2>
@@ -2309,15 +2359,20 @@ struct AvatarRequest {
 
 impl AvatarRequest {
     fn from_query(query: AvatarQuery) -> Result<Self, String> {
-        Ok(Self {
-            identity: query.id.unwrap_or_else(|| DEFAULT_ID.to_string()),
+        let request = Self {
+            identity: query
+                .id
+                .map(|value| value.trim().to_string())
+                .unwrap_or_else(|| DEFAULT_ID.to_string()),
             namespace_tenant: query
                 .tenant
-                .filter(|value| !value.trim().is_empty())
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| DEFAULT_NAMESPACE_TENANT.to_string()),
             namespace_style: query
                 .style_version
-                .filter(|value| !value.trim().is_empty())
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| DEFAULT_NAMESPACE_STYLE.to_string()),
             kind: query
                 .kind
@@ -2337,7 +2392,16 @@ impl AvatarRequest {
             size: query.size.unwrap_or(256),
             persist: query.persist.unwrap_or(false),
             redirect: query.redirect.unwrap_or(false),
-        })
+        };
+        request.validate()?;
+        Ok(request)
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        validate_identity(self.identity.trim())?;
+        validate_namespace_component("tenant", &self.namespace_tenant)?;
+        validate_namespace_component("style_version", &self.namespace_style)?;
+        Ok(())
     }
 }
 
@@ -2531,6 +2595,19 @@ mod tests {
     }
 
     #[test]
+    fn rate_limiter_recovers_from_poisoned_mutex() {
+        let limiter = RateLimiter::with_capacity(2);
+        let buckets = limiter.buckets.clone();
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = buckets.lock().expect("rate limiter lock");
+            panic!("poison rate limiter lock");
+        }));
+
+        assert!(limiter.check("after-poison".to_string(), 1));
+    }
+
+    #[test]
     fn client_ip_ignores_forwarded_headers_from_untrusted_peers() {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", HeaderValue::from_static("203.0.113.99"));
@@ -2604,13 +2681,69 @@ mod tests {
     #[test]
     fn build_avatar_asset_rejects_oversized_namespace() {
         let mut request = test_avatar_request(AvatarRequestFormat::Svg);
-        request.namespace_tenant = "x".repeat(129);
+        request.namespace_tenant = "x".repeat(MAX_NAMESPACE_COMPONENT_BYTES + 1);
 
         let error = match build_avatar_asset(&request) {
             Ok(_) => panic!("oversized tenant should be rejected"),
             Err(error) => error,
         };
 
-        assert!(error.contains("namespace tenant must be at most 128 bytes"));
+        assert!(error.contains("tenant must be 1-64 ASCII"));
+    }
+
+    #[test]
+    fn build_avatar_asset_rejects_path_like_namespace() {
+        let mut request = test_avatar_request(AvatarRequestFormat::Svg);
+        request.namespace_tenant = "../admin".to_string();
+
+        let error = match build_avatar_asset(&request) {
+            Ok(_) => panic!("path-like tenant should be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("tenant must be 1-64 ASCII"));
+    }
+
+    #[test]
+    fn build_avatar_asset_rejects_oversized_identity() {
+        let mut request = test_avatar_request(AvatarRequestFormat::Svg);
+        request.identity = "x".repeat(MAX_ID_BYTES + 1);
+
+        let error = match build_avatar_asset(&request) {
+            Ok(_) => panic!("oversized identity should be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("identity must be at most 512 bytes"));
+    }
+
+    #[test]
+    fn build_avatar_asset_rejects_raw_email_identity() {
+        let mut request = test_avatar_request(AvatarRequestFormat::Svg);
+        request.identity = "person@example.com".to_string();
+
+        let error = match build_avatar_asset(&request) {
+            Ok(_) => panic!("raw email identity should be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("raw email addresses"));
+    }
+
+    #[test]
+    fn object_key_uses_full_sha256_digest() {
+        let request = test_avatar_request(AvatarRequestFormat::Svg);
+        let asset = build_avatar_asset(&request).expect("avatar should render");
+        let filename = asset
+            .object_key
+            .rsplit('/')
+            .next()
+            .expect("object key filename");
+        let digest = filename
+            .strip_suffix(".svg")
+            .expect("svg object key suffix");
+
+        assert_eq!(digest.len(), 64);
+        assert!(digest.bytes().all(|byte| byte.is_ascii_hexdigit()));
     }
 }

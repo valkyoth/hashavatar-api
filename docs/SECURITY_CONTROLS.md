@@ -11,7 +11,9 @@ local test and release gates.
 | Forwarded-header spoofing | `X-Forwarded-For`, `X-Real-IP`, and `CF-Connecting-IP` are honored only when the direct peer is a configured trusted proxy. |
 | Verbose internal errors | Internal errors are logged with `tracing`; clients receive a generic static 500 body. |
 | Browser-side content confusion | Responses receive CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy` headers. |
-| Oversized avatar namespace or identity input | `hashavatar 0.6.0` validates namespace and identity byte lengths before rendering. |
+| S3 prefix escaping | Tenant and style-version namespaces are limited to ASCII letters, digits, hyphens, and underscores before object keys are built. |
+| Oversized avatar namespace or identity input | The service caps identities at 512 bytes and namespace components at 64 bytes before rendering. |
+| PII in infrastructure logs | Raw email-shaped identities are rejected; callers should send opaque stable ids or one-way hashes. |
 | Vulnerable or incompatible dependencies | `cargo audit` and `cargo deny check` run in the standard check script and CI. |
 
 ## Self-Testing

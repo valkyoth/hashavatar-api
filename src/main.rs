@@ -4,7 +4,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use aws_config::{BehaviorVersion, Region};
 use aws_sdk_s3::Client as S3Client;
@@ -49,7 +49,8 @@ const MAX_SIZE: u32 = 1024;
 const MAX_ID_BYTES: usize = 512;
 const MAX_NAMESPACE_COMPONENT_BYTES: usize = 64;
 const PRESET_PAGE_SIZE: usize = 12;
-static CSP_NONCE_FALLBACK_COUNTER: AtomicU64 = AtomicU64::new(0);
+const INDEX_SCRIPT_SHA256: &str = "'sha256-UkIzZ5cdwuXS5bP3yWgMhx7hCZDvrzzCiN6MMFMfa9o='";
+const INDEX_SCRIPT_SHA256_COMPAT: &str = "'sha256-ZswfTY7H35rbv8WC7NXBoiC7WNu86vSzCDChNWwZZDM='";
 
 struct AppState {
     storage: Option<Arc<S3Storage>>,
@@ -130,38 +131,39 @@ impl CspNonce {
     }
 }
 
-fn generate_csp_nonce() -> CspNonce {
+fn generate_csp_nonce() -> Result<CspNonce, getrandom::Error> {
     let mut bytes = [0_u8; 16];
-    if let Err(error) = getrandom::fill(&mut bytes) {
-        let counter = CSP_NONCE_FALLBACK_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let fallback = Sha256::digest(format!("{now}:{counter}:{error}").as_bytes());
-        bytes.copy_from_slice(&fallback[..16]);
-        tracing::warn!(%error, "falling back to deterministic CSP nonce entropy");
-    }
+    getrandom::fill(&mut bytes)?;
 
     let mut nonce = String::with_capacity(32);
     for byte in bytes {
         nonce.push_str(&format!("{byte:02x}"));
     }
-    CspNonce(nonce)
+    Ok(CspNonce(nonce))
 }
 
 fn content_security_policy(nonce: &CspNonce) -> String {
     format!(
-        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'nonce-{nonce}'; script-src 'self' 'nonce-{nonce}'; connect-src 'self'; form-action 'self'",
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'nonce-{nonce}'; script-src 'self' 'nonce-{nonce}' {script_hash} {script_hash_compat}; connect-src 'self'; form-action 'self'",
         nonce = nonce.as_str(),
+        script_hash = INDEX_SCRIPT_SHA256,
+        script_hash_compat = INDEX_SCRIPT_SHA256_COMPAT,
     )
 }
 
 async fn add_security_headers(mut request: Request, next: Next) -> Response {
-    let csp_nonce = generate_csp_nonce();
+    let csp_nonce = match generate_csp_nonce() {
+        Ok(nonce) => nonce,
+        Err(error) => return secure_rng_failure(error),
+    };
     request.extensions_mut().insert(csp_nonce.clone());
 
     let mut response = next.run(request).await;
+    let is_html_response = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|content_type| content_type.starts_with("text/html"));
     let headers = response.headers_mut();
     let csp = content_security_policy(&csp_nonce);
 
@@ -189,12 +191,48 @@ async fn add_security_headers(mut request: Request, next: Next) -> Response {
         header::HeaderName::from_static("x-frame-options"),
         HeaderValue::from_static("DENY"),
     );
+    if is_html_response {
+        headers.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store, max-age=0"),
+        );
+    }
 
     response
 }
 
-async fn index(Extension(csp_nonce): Extension<CspNonce>) -> Html<String> {
-    Html(render_index_html(&csp_nonce))
+fn secure_rng_failure(error: getrandom::Error) -> Response {
+    tracing::error!(%error, "secure RNG failure; refusing to generate CSP nonce");
+    let mut response = (StatusCode::SERVICE_UNAVAILABLE, INTERNAL_ERROR_MESSAGE).into_response();
+    let headers = response.headers_mut();
+    headers.insert(
+        header::HeaderName::from_static("content-security-policy"),
+        HeaderValue::from_static("default-src 'none'; base-uri 'none'; frame-ancestors 'none'"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("x-frame-options"),
+        HeaderValue::from_static("DENY"),
+    );
+    response
+}
+
+async fn index(
+    State(state): State<AppState>,
+    Extension(csp_nonce): Extension<CspNonce>,
+) -> Html<String> {
+    Html(render_index_html(&csp_nonce, state.storage.is_some()))
 }
 
 async fn help_page(Extension(csp_nonce): Extension<CspNonce>) -> Html<String> {
@@ -637,8 +675,9 @@ impl Metrics {
     }
 
     fn observe_generation(&self, duration: Duration) {
+        let millis = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
         self.generation_millis_total
-            .fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
+            .fetch_add(millis, Ordering::Relaxed);
     }
 
     fn snapshot(&self, s3_enabled: bool) -> MetricsSnapshot {
@@ -668,16 +707,9 @@ async fn enforce_limits(
     headers: &HeaderMap,
     peer_ip: IpAddr,
     route: RateLimitRoute,
-    request: &AvatarRequest,
 ) -> Result<(), Response> {
     let ip = client_ip(headers, peer_ip, &state.trusted_proxies);
-    let key = format!(
-        "{}:{}:{}:{}",
-        route.as_str(),
-        ip,
-        request.namespace_tenant,
-        request.kind.as_str()
-    );
+    let key = rate_limit_key(route, &ip);
     let allowed = state.rate_limiter.check(key, route.limit());
     if allowed {
         Ok(())
@@ -689,6 +721,10 @@ async fn enforce_limits(
         )
             .into_response())
     }
+}
+
+fn rate_limit_key(route: RateLimitRoute, ip: &str) -> String {
+    format!("{}:{ip}", route.as_str())
 }
 
 fn client_ip(headers: &HeaderMap, peer_ip: IpAddr, trusted_proxies: &TrustedProxies) -> String {
@@ -722,14 +758,8 @@ async fn query_avatar(
         Err(message) => return bad_request(&message),
     };
 
-    if let Err(response) = enforce_limits(
-        &state,
-        &headers,
-        peer_addr.ip(),
-        RateLimitRoute::Avatar,
-        &request,
-    )
-    .await
+    if let Err(response) =
+        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::Avatar).await
     {
         return response;
     }
@@ -752,7 +782,6 @@ async fn query_avatar_link(
         &headers,
         peer_addr.ip(),
         RateLimitRoute::StorageLink,
-        &request,
     )
     .await
     {
@@ -792,14 +821,8 @@ async fn path_avatar(
         return bad_request(&message);
     }
 
-    if let Err(response) = enforce_limits(
-        &state,
-        &headers,
-        peer_addr.ip(),
-        RateLimitRoute::Avatar,
-        &request,
-    )
-    .await
+    if let Err(response) =
+        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::Avatar).await
     {
         return response;
     }
@@ -1323,6 +1346,10 @@ fn checked_attr(checked: bool) -> &'static str {
     if checked { " checked" } else { "" }
 }
 
+fn disabled_attr(disabled: bool) -> &'static str {
+    if disabled { " disabled" } else { "" }
+}
+
 fn avatar_kind_label(kind: AvatarKind) -> &'static str {
     match kind {
         AvatarKind::Cat => "Cat",
@@ -1658,7 +1685,7 @@ fn render_page_html(
     )
 }
 
-fn render_index_html(csp_nonce: &CspNonce) -> String {
+fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> String {
     let description = "Deterministic procedural avatars for opaque user ids, stable usernames, and one-way hashes. Generate 23 avatar families as WebP, PNG, JPEG, GIF, or SVG.";
     let nonce = escape_html_attribute(csp_nonce.as_str());
     format!(
@@ -2026,7 +2053,7 @@ fn render_index_html(csp_nonce: &CspNonce) -> String {
 
           <div class="actions">
             <button id="copy-button" type="button">Copy URL</button>
-            <button id="copy-signed-button" type="button" class="secondary">Copy Signed Link</button>
+            <button id="copy-signed-button" type="button" class="secondary"{signed_disabled}>Copy Signed Link</button>
             <a id="download-button" class="button-link" href="/v1/avatar?id={id}&algorithm=sha512&kind=cat&background=themed&format=webp&size=256" download="hashavatar.webp">Download</a>
             <a id="open-button" class="button-link secondary" href="/v1/avatar?id={id}&algorithm=sha512&kind=cat&background=themed&format=webp&size=256" target="_blank" rel="noreferrer">Open Raw</a>
           </div>
@@ -2097,6 +2124,7 @@ fn render_index_html(csp_nonce: &CspNonce) -> String {
     const presetNext = document.getElementById("preset-next");
     const presetExamples = {preset_examples};
     const presetPageSize = {preset_page_size};
+    const storageLinksEnabled = {storage_links_enabled};
     const presetIdentities = new Map(
       Array.from(kindEl.options).map((option) => [option.value, option.dataset.identity])
     );
@@ -2153,6 +2181,12 @@ fn render_index_html(csp_nonce: &CspNonce) -> String {
     }}
 
     async function updateSignedUrl() {{
+      if (!storageLinksEnabled) {{
+        signedUrlEl.textContent = "Signed storage links are unavailable until S3 is configured on the server.";
+        copySignedButton.disabled = true;
+        return;
+      }}
+
       try {{
         const response = await fetch(currentSignedUrlEndpoint(), {{ headers: {{ "accept": "application/json" }} }});
         if (!response.ok) {{
@@ -2161,8 +2195,10 @@ fn render_index_html(csp_nonce: &CspNonce) -> String {
         }}
         const payload = await response.json();
         signedUrlEl.textContent = payload.signed_url;
+        copySignedButton.disabled = false;
       }} catch (_) {{
         signedUrlEl.textContent = "Signed storage links are unavailable until S3 is configured on the server.";
+        copySignedButton.disabled = true;
       }}
     }}
 
@@ -2297,6 +2333,8 @@ fn render_index_html(csp_nonce: &CspNonce) -> String {
         format_options = format_options_html(AvatarRequestFormat::Webp),
         preset_examples = preset_examples_json(),
         preset_page_size = PRESET_PAGE_SIZE,
+        storage_links_enabled = storage_links_enabled,
+        signed_disabled = disabled_attr(!storage_links_enabled),
         meta_tags = render_meta_tags("Public Avatar API", description, "/", csp_nonce),
         styles = shared_page_styles(),
         nonce = nonce,
@@ -2837,6 +2875,18 @@ mod tests {
     }
 
     #[test]
+    fn rate_limit_key_is_route_and_ip_scoped() {
+        assert_eq!(
+            rate_limit_key(RateLimitRoute::Avatar, "203.0.113.10"),
+            "avatar:203.0.113.10"
+        );
+        assert_eq!(
+            rate_limit_key(RateLimitRoute::StorageLink, "203.0.113.10"),
+            "storage-link:203.0.113.10"
+        );
+    }
+
+    #[test]
     fn rate_limiter_recovers_from_poisoned_mutex() {
         let limiter = RateLimiter::with_capacity(2);
         let buckets = limiter.buckets.clone();
@@ -2847,6 +2897,18 @@ mod tests {
         }));
 
         assert!(limiter.check("after-poison".to_string(), 1));
+    }
+
+    #[test]
+    fn metrics_generation_duration_saturates_at_u64_max() {
+        let metrics = Metrics::default();
+
+        metrics.observe_generation(Duration::from_secs(u64::MAX));
+
+        assert_eq!(
+            metrics.generation_millis_total.load(Ordering::Relaxed),
+            u64::MAX
+        );
     }
 
     #[test]
@@ -2862,11 +2924,33 @@ mod tests {
     #[test]
     fn rendered_index_applies_csp_nonce_to_inline_blocks() {
         let nonce = CspNonce("testnonce".to_string());
-        let html = render_index_html(&nonce);
+        let html = render_index_html(&nonce, false);
 
         assert!(html.contains(r#"<style nonce="testnonce">"#));
         assert!(html.contains(r#"<script nonce="testnonce">"#));
         assert!(html.contains(r#"<script nonce="testnonce" type="application/ld+json">"#));
+    }
+
+    #[test]
+    fn rendered_index_disables_signed_link_fetches_without_storage() {
+        let nonce = CspNonce("testnonce".to_string());
+        let html = render_index_html(&nonce, false);
+
+        assert!(html.contains("const storageLinksEnabled = false;"));
+        assert!(
+            html.contains(r#"id="copy-signed-button" type="button" class="secondary" disabled"#)
+        );
+    }
+
+    #[test]
+    fn rendered_index_enables_signed_link_fetches_with_storage() {
+        let nonce = CspNonce("testnonce".to_string());
+        let html = render_index_html(&nonce, true);
+
+        assert!(html.contains("const storageLinksEnabled = true;"));
+        assert!(
+            !html.contains(r#"id="copy-signed-button" type="button" class="secondary" disabled"#)
+        );
     }
 
     #[test]
@@ -2963,7 +3047,7 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_svg_with_hashavatar_0_8() {
+    fn build_avatar_asset_renders_svg_with_hashavatar_0_9() {
         let request = test_avatar_request(AvatarRequestFormat::Svg);
         let asset = build_avatar_asset(&request).expect("svg avatar should render");
         let body = std::str::from_utf8(&asset.body).expect("svg should be utf8");

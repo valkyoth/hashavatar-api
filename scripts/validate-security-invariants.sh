@@ -24,6 +24,12 @@ grep -q 'INTERNAL_ERROR_MESSAGE' src/main.rs \
     || fail "generic internal error message constant is missing"
 grep -q 'fn add_security_headers' src/main.rs \
     || fail "security header middleware is missing"
+grep -q 'fn secure_rng_failure' src/main.rs \
+    || fail "CSP nonce RNG failure must fail closed"
+if grep -q 'CSP_NONCE_FALLBACK_COUNTER' src/main.rs \
+    || grep -q 'falling back to deterministic CSP nonce entropy' src/main.rs; then
+    fail "CSP nonce generation must not use deterministic fallback entropy"
+fi
 grep -q 'MAX_ID_BYTES' src/main.rs \
     || fail "identity byte limit is missing"
 grep -q 'MAX_NAMESPACE_COMPONENT_BYTES' src/main.rs \
@@ -49,6 +55,8 @@ fi
 
 grep -q 'rate_limiter_bounds_unique_attacker_keys' src/main.rs \
     || fail "rate limiter memory bound regression test is missing"
+grep -q 'rate_limit_key_is_route_and_ip_scoped' src/main.rs \
+    || fail "rate limiter route/IP scoping regression test is missing"
 grep -q 'client_ip_ignores_forwarded_headers_from_untrusted_peers' src/main.rs \
     || fail "forwarded-header spoofing regression test is missing"
 grep -q 'internal_error_does_not_expose_details' src/main.rs \
@@ -65,6 +73,8 @@ grep -q 'escape_html_attribute_handles_single_quotes' src/main.rs \
     || fail "attribute escaping regression test is missing"
 grep -q 'etag_uses_full_sha256_digest' src/main.rs \
     || fail "full ETag digest regression test is missing"
+grep -q 'metrics_generation_duration_saturates_at_u64_max' src/main.rs \
+    || fail "metrics duration saturation regression test is missing"
 
 if [ -e .github/workflows/codeql.yml ] || [ -e .github/codeql/codeql-config.yml ]; then
     fail "CodeQL default setup is enabled in GitHub; remove repo-level advanced CodeQL configuration"

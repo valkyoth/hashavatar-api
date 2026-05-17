@@ -11,7 +11,7 @@ audit, SBOM, reproducibility, smoke, and GitHub CodeQL default setup checks.
 
 ## Current Status
 
-The current service development version is `0.5.0`.
+The current service version is `0.6.0`.
 
 Implemented now:
 

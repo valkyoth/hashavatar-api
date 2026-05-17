@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes are expected for the latest published `0.5.x` release.
+Security fixes are expected for the latest published `0.6.x` release.
 
 ## Reporting a Vulnerability
 

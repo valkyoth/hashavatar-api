@@ -1,5 +1,5 @@
-use std::collections::{HashMap, VecDeque};
 use std::net::{IpAddr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -18,17 +18,19 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use hashavatar::{
-    AVATAR_STYLE_VERSION, AvatarBackground, AvatarHashAlgorithm, AvatarIdentityOptions, AvatarKind,
-    AvatarNamespace, AvatarOptions, AvatarOutputFormat, AvatarSpec,
-    encode_avatar_with_identity_options, render_avatar_for_namespace,
-    render_avatar_svg_with_identity_options,
+    AVATAR_STYLE_VERSION, AvatarAccessory, AvatarBackground, AvatarColor, AvatarExpression,
+    AvatarHashAlgorithm, AvatarIdentityOptions, AvatarKind, AvatarNamespace, AvatarOptions,
+    AvatarOutputFormat, AvatarShape, AvatarSpec, AvatarStyleOptions,
+    encode_avatar_style_with_identity_options, render_avatar_for_namespace,
+    render_avatar_svg_style_with_identity_options,
 };
 use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use ipnet::IpNet;
+use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-const DEFAULT_HOST: &str = "0.0.0.0";
+const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 8080;
 const TRUSTED_PROXIES_ENV: &str = "HASHAVATAR_TRUSTED_PROXIES";
 const DEFAULT_ID: &str = "cat@hashavatar.app";
@@ -39,6 +41,10 @@ const CRATE_URL: &str = "https://crates.io/crates/hashavatar/";
 const DEFAULT_NAMESPACE_TENANT: &str = "public";
 const DEFAULT_NAMESPACE_STYLE: &str = "v2";
 const DEFAULT_HASH_ALGORITHM: AvatarHashAlgorithm = AvatarHashAlgorithm::Sha512;
+const DEFAULT_ACCESSORY: AvatarAccessory = AvatarAccessory::None;
+const DEFAULT_COLOR: AvatarColor = AvatarColor::Default;
+const DEFAULT_EXPRESSION: AvatarExpression = AvatarExpression::Default;
+const DEFAULT_SHAPE: AvatarShape = AvatarShape::Square;
 const AVATAR_TIMEOUT_MS: u64 = 3_000;
 const STORAGE_TIMEOUT_MS: u64 = 5_000;
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
@@ -49,7 +55,7 @@ const MAX_SIZE: u32 = 1024;
 const MAX_ID_BYTES: usize = 512;
 const MAX_NAMESPACE_COMPONENT_BYTES: usize = 64;
 const PRESET_PAGE_SIZE: usize = 12;
-const INDEX_SCRIPT_SHA256: &str = "'sha256-UkIzZ5cdwuXS5bP3yWgMhx7hCZDvrzzCiN6MMFMfa9o='";
+const INDEX_SCRIPT_SHA256: &str = "'sha256-Y0zQEpA7MCRQT9l5Hg4gct0PrA19C+YJJHjA3PJJM/I='";
 const INDEX_SCRIPT_SHA256_COMPAT: &str = "'sha256-ZswfTY7H35rbv8WC7NXBoiC7WNu86vSzCDChNWwZZDM='";
 
 struct AppState {
@@ -334,6 +340,10 @@ async fn openapi_json() -> impl IntoResponse {
                         {"name":"algorithm","in":"query","schema":{"type":"string","enum": AvatarHashAlgorithm::ALL.iter().map(|algorithm| algorithm.as_str()).collect::<Vec<_>>()}},
                         {"name":"kind","in":"query","schema":{"type":"string","enum": AvatarKind::ALL.iter().map(|kind| kind.as_str()).collect::<Vec<_>>()}},
                         {"name":"background","in":"query","schema":{"type":"string","enum": AvatarBackground::ALL.iter().map(|background| background.as_str()).collect::<Vec<_>>()}},
+                        {"name":"accessory","in":"query","schema":{"type":"string","enum": AvatarAccessory::ALL.iter().map(|accessory| accessory.as_str()).collect::<Vec<_>>()}},
+                        {"name":"color","in":"query","schema":{"type":"string","enum": AvatarColor::ALL.iter().map(|color| color.as_str()).collect::<Vec<_>>()}},
+                        {"name":"expression","in":"query","schema":{"type":"string","enum": AvatarExpression::ALL.iter().map(|expression| expression.as_str()).collect::<Vec<_>>()}},
+                        {"name":"shape","in":"query","schema":{"type":"string","enum": AvatarShape::ALL.iter().map(|shape| shape.as_str()).collect::<Vec<_>>()}},
                         {"name":"format","in":"query","schema":{"type":"string","enum":["webp","png","jpg","gif","svg"]}},
                         {"name":"size","in":"query","schema":{"type":"integer","minimum": MIN_SIZE, "maximum": MAX_SIZE}}
                     ],
@@ -412,14 +422,20 @@ async fn og_png(Query(query): Query<OgQuery>) -> Response {
     let bytes = {
         use image::ImageEncoder;
         let mut buf = Vec::new();
-        image::codecs::png::PngEncoder::new(&mut buf)
+        let result = image::codecs::png::PngEncoder::new(&mut buf)
             .write_image(
                 canvas.as_raw(),
                 canvas.width(),
                 canvas.height(),
                 image::ExtendedColorType::Rgba8,
             )
-            .expect("png encode");
+            .map_err(|error| {
+                tracing::error!(%error, "Open Graph PNG encoding failed");
+                StatusCode::INTERNAL_SERVER_ERROR
+            });
+        if let Err(status) = result {
+            return status.into_response();
+        }
         buf
     };
 
@@ -480,51 +496,27 @@ struct RateBucket {
 }
 
 struct RateLimiterState {
-    capacity: usize,
-    buckets: HashMap<String, RateBucket>,
-    order: VecDeque<String>,
+    buckets: LruCache<String, RateBucket>,
 }
 
 impl RateLimiterState {
     fn new(capacity: usize) -> Self {
+        let capacity =
+            NonZeroUsize::new(capacity.max(1)).expect("rate limiter capacity is nonzero");
         Self {
-            capacity: capacity.max(1),
-            buckets: HashMap::new(),
-            order: VecDeque::new(),
-        }
-    }
-
-    fn touch(&mut self, key: &str) {
-        self.order.retain(|existing| existing != key);
-        self.order.push_back(key.to_string());
-    }
-
-    fn evict_oldest_if_full(&mut self) {
-        while self.buckets.len() >= self.capacity {
-            match self.order.pop_front() {
-                Some(key) => {
-                    if self.buckets.remove(&key).is_some() {
-                        return;
-                    }
-                }
-                None => return,
-            }
+            buckets: LruCache::new(capacity),
         }
     }
 
     fn bucket_for(&mut self, key: String, now: Instant) -> &mut RateBucket {
-        if self.buckets.contains_key(&key) {
-            self.touch(&key);
-        } else {
-            self.evict_oldest_if_full();
-            self.buckets.insert(
+        if self.buckets.get(&key).is_none() {
+            self.buckets.push(
                 key.clone(),
                 RateBucket {
                     started_at: now,
                     count: 0,
                 },
             );
-            self.touch(&key);
         }
 
         self.buckets
@@ -732,19 +724,34 @@ fn client_ip(headers: &HeaderMap, peer_ip: IpAddr, trusted_proxies: &TrustedProx
         return peer_ip.to_string();
     }
 
-    for header_name in ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"] {
-        if let Some(value) = headers
-            .get(header_name)
-            .and_then(|value| value.to_str().ok())
-            && let Some(first) = value.split(',').next()
-        {
-            let trimmed = first.trim();
-            if let Ok(ip) = trimmed.parse::<IpAddr>() {
+    if let Some(ip) = single_ip_header(headers, "cf-connecting-ip") {
+        return ip.to_string();
+    }
+
+    if let Some(ip) = single_ip_header(headers, "x-real-ip") {
+        return ip.to_string();
+    }
+
+    if let Some(value) = headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+    {
+        for candidate in value.split(',').rev() {
+            if let Ok(ip) = candidate.trim().parse::<IpAddr>()
+                && !trusted_proxies.contains(ip)
+            {
                 return ip.to_string();
             }
         }
     }
     peer_ip.to_string()
+}
+
+fn single_ip_header(headers: &HeaderMap, header_name: &'static str) -> Option<IpAddr> {
+    headers
+        .get(header_name)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<IpAddr>().ok())
 }
 
 async fn query_avatar(
@@ -812,6 +819,10 @@ async fn path_avatar(
         algorithm: DEFAULT_HASH_ALGORITHM,
         kind,
         background: AvatarBackground::Themed,
+        accessory: DEFAULT_ACCESSORY,
+        color: DEFAULT_COLOR,
+        expression: DEFAULT_EXPRESSION,
+        shape: DEFAULT_SHAPE,
         format,
         size: 256,
         persist: false,
@@ -954,69 +965,75 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
     }
 
     let spec = AvatarSpec::new(request.size, request.size, 0).map_err(|error| error.to_string())?;
-    let options = AvatarOptions::new(request.kind, request.background);
+    let style = request.style_options();
     let namespace = AvatarNamespace::new(&request.namespace_tenant, &request.namespace_style)
         .map_err(|error| error.to_string())?;
     let identity_options = AvatarIdentityOptions::new(namespace, request.algorithm);
+    let accessory = request.effective_accessory();
+    let expression = request.effective_expression();
     let cache_key = format!(
-        "{}:{}:{}:{}:{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
         request.namespace_tenant,
         request.namespace_style,
         request.algorithm,
         identity,
         request.kind,
         request.background,
+        accessory,
+        request.color,
+        expression,
+        request.shape,
         request.format,
         request.size
     );
 
     let (body, content_type) = match request.format {
         AvatarRequestFormat::Webp => (
-            encode_avatar_with_identity_options(
+            encode_avatar_style_with_identity_options(
                 spec,
                 identity_options,
                 identity,
                 AvatarOutputFormat::WebP,
-                options,
+                style,
             )
             .map_err(|error| format!("avatar generation failed: {error}"))?,
             "image/webp",
         ),
         AvatarRequestFormat::Png => (
-            encode_avatar_with_identity_options(
+            encode_avatar_style_with_identity_options(
                 spec,
                 identity_options,
                 identity,
                 AvatarOutputFormat::Png,
-                options,
+                style,
             )
             .map_err(|error| format!("avatar generation failed: {error}"))?,
             "image/png",
         ),
         AvatarRequestFormat::Jpeg => (
-            encode_avatar_with_identity_options(
+            encode_avatar_style_with_identity_options(
                 spec,
                 identity_options,
                 identity,
                 AvatarOutputFormat::Jpeg,
-                options,
+                style,
             )
             .map_err(|error| format!("avatar generation failed: {error}"))?,
             "image/jpeg",
         ),
         AvatarRequestFormat::Gif => (
-            encode_avatar_with_identity_options(
+            encode_avatar_style_with_identity_options(
                 spec,
                 identity_options,
                 identity,
                 AvatarOutputFormat::Gif,
-                options,
+                style,
             )
             .map_err(|error| format!("avatar generation failed: {error}"))?,
             "image/gif",
         ),
         AvatarRequestFormat::Svg => (
-            render_avatar_svg_with_identity_options(spec, identity_options, identity, options)
+            render_avatar_svg_style_with_identity_options(spec, identity_options, identity, style)
                 .map_err(|error| format!("avatar generation failed: {error}"))?
                 .into_bytes(),
             "image/svg+xml",
@@ -1064,15 +1081,21 @@ fn etag_for(cache_key: &str) -> String {
 }
 
 fn object_key_for(request: &AvatarRequest, identity: &str) -> String {
+    let accessory = request.effective_accessory();
+    let expression = request.effective_expression();
     let digest = Sha256::digest(
         format!(
-            "{}:{}:{}:{}:{}:{}:{}:{}",
+            "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
             request.namespace_tenant,
             request.namespace_style,
             request.algorithm,
             identity,
             request.kind,
             request.background,
+            accessory,
+            request.color,
+            expression,
+            request.shape,
             request.format,
             request.size
         )
@@ -1083,12 +1106,16 @@ fn object_key_for(request: &AvatarRequest, identity: &str) -> String {
         encoded.push_str(&format!("{byte:02x}"));
     }
     format!(
-        "{}/{}/{}/{}/{}/{}/{}.{}",
+        "{}/{}/{}/{}/{}/{}/{}/{}/{}/{}/{}.{}",
         request.namespace_tenant,
         request.namespace_style,
         request.algorithm.as_str(),
         request.kind.as_str(),
         request.background.as_str(),
+        accessory.as_str(),
+        request.color.as_str(),
+        expression.as_str(),
+        request.shape.as_str(),
         request.size,
         encoded,
         request.format.as_str()
@@ -1389,6 +1416,55 @@ fn background_label(background: AvatarBackground) -> &'static str {
     }
 }
 
+fn accessory_label(accessory: AvatarAccessory) -> &'static str {
+    match accessory {
+        AvatarAccessory::None => "None",
+        AvatarAccessory::Glasses => "Glasses",
+        AvatarAccessory::Hat => "Hat",
+        AvatarAccessory::Headphones => "Headphones",
+        AvatarAccessory::Crown => "Crown",
+        AvatarAccessory::Bowtie => "Bowtie",
+        AvatarAccessory::Eyepatch => "Eyepatch",
+        AvatarAccessory::Scarf => "Scarf",
+        AvatarAccessory::Halo => "Halo",
+        AvatarAccessory::Horns => "Horns",
+    }
+}
+
+fn color_label(color: AvatarColor) -> &'static str {
+    match color {
+        AvatarColor::Default => "Default",
+        AvatarColor::NeonMint => "Neon Mint",
+        AvatarColor::PastelPink => "Pastel Pink",
+        AvatarColor::Crimson => "Crimson",
+        AvatarColor::Gold => "Gold",
+        AvatarColor::DeepSeaBlue => "Deep Sea Blue",
+    }
+}
+
+fn expression_label(expression: AvatarExpression) -> &'static str {
+    match expression {
+        AvatarExpression::Default => "Default",
+        AvatarExpression::Happy => "Happy",
+        AvatarExpression::Grumpy => "Grumpy",
+        AvatarExpression::Surprised => "Surprised",
+        AvatarExpression::Sleepy => "Sleepy",
+        AvatarExpression::Winking => "Winking",
+        AvatarExpression::Cool => "Cool",
+        AvatarExpression::Crying => "Crying",
+    }
+}
+
+fn shape_label(shape: AvatarShape) -> &'static str {
+    match shape {
+        AvatarShape::Square => "Square",
+        AvatarShape::Circle => "Circle",
+        AvatarShape::Squircle => "Squircle",
+        AvatarShape::Hexagon => "Hexagon",
+        AvatarShape::Octagon => "Octagon",
+    }
+}
+
 fn hash_algorithm_label(algorithm: AvatarHashAlgorithm) -> &'static str {
     match algorithm {
         AvatarHashAlgorithm::Sha512 => "SHA-512",
@@ -1419,9 +1495,10 @@ fn kind_options_html(selected: AvatarKind) -> String {
         .copied()
         .map(|kind| {
             format!(
-                r#"<option value="{value}" data-identity="{value}@hashavatar.app"{selected}>{label}</option>"#,
+                r#"<option value="{value}" data-identity="{value}@hashavatar.app" data-supports-layers="{supports_layers}"{selected}>{label}</option>"#,
                 value = kind.as_str(),
                 label = avatar_kind_label(kind),
+                supports_layers = avatar_kind_supports_style_layers(kind),
                 selected = selected_attr(kind == selected),
             )
         })
@@ -1443,6 +1520,84 @@ fn background_options_html(selected: AvatarBackground) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn accessory_options_html(selected: AvatarAccessory) -> String {
+    AvatarAccessory::ALL
+        .iter()
+        .copied()
+        .map(|accessory| {
+            format!(
+                r#"<option value="{value}"{selected}>{label}</option>"#,
+                value = accessory.as_str(),
+                label = accessory_label(accessory),
+                selected = selected_attr(accessory == selected),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn color_options_html(selected: AvatarColor) -> String {
+    AvatarColor::ALL
+        .iter()
+        .copied()
+        .map(|color| {
+            format!(
+                r#"<option value="{value}"{selected}>{label}</option>"#,
+                value = color.as_str(),
+                label = color_label(color),
+                selected = selected_attr(color == selected),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn expression_options_html(selected: AvatarExpression) -> String {
+    AvatarExpression::ALL
+        .iter()
+        .copied()
+        .map(|expression| {
+            format!(
+                r#"<option value="{value}"{selected}>{label}</option>"#,
+                value = expression.as_str(),
+                label = expression_label(expression),
+                selected = selected_attr(expression == selected),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn shape_options_html(selected: AvatarShape) -> String {
+    AvatarShape::ALL
+        .iter()
+        .copied()
+        .map(|shape| {
+            format!(
+                r#"<option value="{value}"{selected}>{label}</option>"#,
+                value = shape.as_str(),
+                label = shape_label(shape),
+                selected = selected_attr(shape == selected),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn avatar_kind_supports_style_layers(kind: AvatarKind) -> bool {
+    !matches!(
+        kind,
+        AvatarKind::Paws
+            | AvatarKind::Planet
+            | AvatarKind::Rocket
+            | AvatarKind::Mushroom
+            | AvatarKind::Cactus
+            | AvatarKind::Cupcake
+            | AvatarKind::Pizza
+            | AvatarKind::Icecream
+    )
 }
 
 fn format_options_html(selected: AvatarRequestFormat) -> String {
@@ -2034,6 +2189,36 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
 
           <div class="field-grid">
             <div>
+              <label for="accessory">Accessory</label>
+              <select id="accessory">
+                {accessory_options}
+              </select>
+            </div>
+            <div>
+              <label for="color">Accent Color</label>
+              <select id="color">
+                {color_options}
+              </select>
+            </div>
+          </div>
+
+          <div class="field-grid">
+            <div>
+              <label for="expression">Expression</label>
+              <select id="expression">
+                {expression_options}
+              </select>
+            </div>
+            <div>
+              <label for="shape">Shape</label>
+              <select id="shape">
+                {shape_options}
+              </select>
+            </div>
+          </div>
+
+          <div class="field-grid">
+            <div>
               <label for="format">Format</label>
               <select id="format">
                 {format_options}
@@ -2109,6 +2294,10 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
     const styleVersionEl = document.getElementById("style-version");
     const kindEl = document.getElementById("kind");
     const backgroundEl = document.getElementById("background");
+    const accessoryEl = document.getElementById("accessory");
+    const colorEl = document.getElementById("color");
+    const expressionEl = document.getElementById("expression");
+    const shapeEl = document.getElementById("shape");
     const formatEl = document.getElementById("format");
     const sizeEl = document.getElementById("size");
     const previewEl = document.getElementById("avatar-preview");
@@ -2128,6 +2317,9 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
     const presetIdentities = new Map(
       Array.from(kindEl.options).map((option) => [option.value, option.dataset.identity])
     );
+    const styleLayerSupport = new Map(
+      Array.from(kindEl.options).map((option) => [option.value, option.dataset.supportsLayers === "true"])
+    );
     let presetPage = 0;
 
     function currentIdentity() {{
@@ -2143,6 +2335,37 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       return presetIdentities.get(kindEl.value) || "{id}";
     }}
 
+    function supportsStyleLayers(kind) {{
+      return styleLayerSupport.get(kind) !== false;
+    }}
+
+    function styleParamsForKind(kind) {{
+      if (!supportsStyleLayers(kind)) {{
+        return {{
+          accessory: "none",
+          color: colorEl.value,
+          expression: "default",
+          shape: shapeEl.value,
+        }};
+      }}
+      return {{
+        accessory: accessoryEl.value,
+        color: colorEl.value,
+        expression: expressionEl.value,
+        shape: shapeEl.value,
+      }};
+    }}
+
+    function syncStyleLayerAvailability() {{
+      const supportsLayers = supportsStyleLayers(kindEl.value);
+      accessoryEl.disabled = !supportsLayers;
+      expressionEl.disabled = !supportsLayers;
+      if (!supportsLayers) {{
+        accessoryEl.value = "none";
+        expressionEl.value = "default";
+      }}
+    }}
+
     function isPresetIdentity(value) {{
       for (const identity of presetIdentities.values()) {{
         if (value === identity) {{
@@ -2153,6 +2376,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
     }}
 
     function currentUrl() {{
+      const styleParams = styleParamsForKind(kindEl.value);
       const query = new URLSearchParams({{
         id: currentIdentity(),
         tenant: tenantEl.value.trim() || "{tenant}",
@@ -2160,6 +2384,10 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         algorithm: currentAlgorithm(),
         kind: kindEl.value,
         background: backgroundEl.value,
+        accessory: styleParams.accessory,
+        color: styleParams.color,
+        expression: styleParams.expression,
+        shape: styleParams.shape,
         format: formatEl.value,
         size: sizeEl.value,
       }});
@@ -2167,6 +2395,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
     }}
 
     function currentSignedUrlEndpoint() {{
+      const styleParams = styleParamsForKind(kindEl.value);
       const query = new URLSearchParams({{
         id: currentIdentity(),
         tenant: tenantEl.value.trim() || "{tenant}",
@@ -2174,6 +2403,10 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         algorithm: currentAlgorithm(),
         kind: kindEl.value,
         background: backgroundEl.value,
+        accessory: styleParams.accessory,
+        color: styleParams.color,
+        expression: styleParams.expression,
+        shape: styleParams.shape,
         format: formatEl.value,
         size: sizeEl.value,
       }});
@@ -2203,7 +2436,9 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
     }}
 
     function refresh() {{
+      syncStyleLayerAvailability();
       const url = currentUrl();
+      const styleParams = styleParamsForKind(kindEl.value);
       const previewQuery = new URLSearchParams({{
         id: currentIdentity(),
         tenant: tenantEl.value.trim() || "{tenant}",
@@ -2211,6 +2446,10 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         algorithm: currentAlgorithm(),
         kind: kindEl.value,
         background: backgroundEl.value,
+        accessory: styleParams.accessory,
+        color: styleParams.color,
+        expression: styleParams.expression,
+        shape: styleParams.shape,
         format: formatEl.value === "svg" ? "svg" : "webp",
         size: sizeEl.value,
         ts: String(Date.now()),
@@ -2244,6 +2483,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       const exampleBackground = backgroundEl.value || "themed";
       exampleGrid.replaceChildren();
       for (const preset of pageItems) {{
+        const styleParams = styleParamsForKind(preset.kind);
         const button = document.createElement("button");
         button.type = "button";
         button.className = "example-card";
@@ -2256,6 +2496,10 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
           algorithm: currentAlgorithm(),
           kind: preset.kind,
           background: exampleBackground,
+          accessory: styleParams.accessory,
+          color: styleParams.color,
+          expression: styleParams.expression,
+          shape: styleParams.shape,
           format: "webp",
           size: "160",
         }});
@@ -2288,7 +2532,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
     copyButton.addEventListener("click", () => copyText(`${{window.location.origin}}${{currentUrl()}}`, copyButton, "Copy URL", "Copied"));
     copySignedButton.addEventListener("click", () => copyText(signedUrlEl.textContent, copySignedButton, "Copy Signed Link", "Copied"));
 
-    [identityEl, tenantEl, styleVersionEl, kindEl, backgroundEl, formatEl, sizeEl].forEach((el) => {{
+    [identityEl, tenantEl, styleVersionEl, kindEl, backgroundEl, accessoryEl, colorEl, expressionEl, shapeEl, formatEl, sizeEl].forEach((el) => {{
       el.addEventListener("input", refresh);
       el.addEventListener("change", refresh);
     }});
@@ -2299,13 +2543,16 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       }});
     }});
 
-    backgroundEl.addEventListener("change", renderPresetPage);
+    [backgroundEl, accessoryEl, colorEl, expressionEl, shapeEl].forEach((el) => {{
+      el.addEventListener("change", renderPresetPage);
+    }});
 
     kindEl.addEventListener("change", () => {{
       const current = identityEl.value.trim();
       if (current === "" || isPresetIdentity(current)) {{
         identityEl.value = selectedPresetIdentity();
       }}
+      renderPresetPage();
       refresh();
     }});
 
@@ -2330,6 +2577,10 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         algorithm_options = hash_algorithm_options_html(DEFAULT_HASH_ALGORITHM),
         kind_options = kind_options_html(AvatarKind::Cat),
         background_options = background_options_html(AvatarBackground::Themed),
+        accessory_options = accessory_options_html(DEFAULT_ACCESSORY),
+        color_options = color_options_html(DEFAULT_COLOR),
+        expression_options = expression_options_html(DEFAULT_EXPRESSION),
+        shape_options = shape_options_html(DEFAULT_SHAPE),
         format_options = format_options_html(AvatarRequestFormat::Webp),
         preset_examples = preset_examples_json(),
         preset_page_size = PRESET_PAGE_SIZE,
@@ -2357,7 +2608,7 @@ fn render_help_html(csp_nonce: &CspNonce) -> String {
   <section class="card">
     <h2>Basic URL</h2>
     <p>Use the query endpoint when you want a simple public image URL.</p>
-    <pre><code>https://{site}/v1/avatar?id=robot@hashavatar.app&amp;algorithm=sha512&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+    <pre><code>https://{site}/v1/avatar?id=robot@hashavatar.app&amp;algorithm=sha512&amp;kind=robot&amp;background=white&amp;accessory=glasses&amp;color=gold&amp;expression=happy&amp;shape=circle&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
     <h2>Path Style URL</h2>
@@ -2367,7 +2618,7 @@ fn render_help_html(csp_nonce: &CspNonce) -> String {
   <section class="card">
     <h2>HTML Example</h2>
     <pre><code>&lt;img
-  src="https://{site}/v1/avatar?id=monster@hashavatar.app&amp;algorithm=blake3&amp;kind=monster&amp;background=themed&amp;format=webp&amp;size=256"
+  src="https://{site}/v1/avatar?id=monster@hashavatar.app&amp;algorithm=blake3&amp;kind=monster&amp;background=themed&amp;accessory=horns&amp;color=crimson&amp;expression=grumpy&amp;shape=hexagon&amp;format=webp&amp;size=256"
   alt="Generated monster avatar"
 /&gt;</code></pre>
   </section>
@@ -2379,6 +2630,10 @@ avatarUrl.search = new URLSearchParams({{
   algorithm: "sha512",
   kind: "robot",
   background: "white",
+  accessory: "glasses",
+  color: "gold",
+  expression: "happy",
+  shape: "circle",
   format: "webp",
   size: "256",
 }}).toString();</code></pre>
@@ -2393,14 +2648,19 @@ avatarUrl.search = new URLSearchParams({{
     <li><code>algorithm</code>: identity hash mode, one of <code>sha512</code>, <code>blake3</code>, or <code>xxh3-128</code></li>
     <li><code>kind</code>: any public hashavatar family, including <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>planet</code>, <code>rocket</code>, <code>frog</code>, <code>panda</code>, <code>cupcake</code>, <code>pizza</code>, <code>octopus</code>, and <code>knight</code></li>
     <li><code>background</code>: <code>themed</code>, <code>white</code>, <code>black</code>, <code>dark</code>, <code>light</code>, or <code>transparent</code></li>
+    <li><code>accessory</code>: <code>none</code>, <code>glasses</code>, <code>hat</code>, <code>headphones</code>, <code>crown</code>, <code>bowtie</code>, <code>eyepatch</code>, <code>scarf</code>, <code>halo</code>, or <code>horns</code></li>
+    <li><code>color</code>: <code>default</code>, <code>neon-mint</code>, <code>pastel-pink</code>, <code>crimson</code>, <code>gold</code>, or <code>deep-sea-blue</code></li>
+    <li><code>expression</code>: <code>default</code>, <code>happy</code>, <code>grumpy</code>, <code>surprised</code>, <code>sleepy</code>, <code>winking</code>, <code>cool</code>, or <code>crying</code></li>
+    <li><code>shape</code>: <code>square</code>, <code>circle</code>, <code>squircle</code>, <code>hexagon</code>, or <code>octagon</code></li>
     <li><code>format</code>: <code>webp</code>, <code>png</code>, <code>jpg</code>, <code>gif</code>, or <code>svg</code></li>
     <li><code>size</code>: from <code>64</code> up to <code>1024</code></li>
   </ul>
+  <p>Accessory and expression layers apply to character-style families. Object-style families such as <code>planet</code>, <code>rocket</code>, <code>paws</code>, <code>mushroom</code>, <code>cactus</code>, <code>cupcake</code>, <code>pizza</code>, and <code>icecream</code> are normalized to <code>accessory=none</code> and <code>expression=default</code>.</p>
 </section>
 <section class="card">
   <h2>Signed Storage Links</h2>
   <p>If this deployment has object storage configured, request a presigned storage link from <code>/v1/avatar/link</code>. That endpoint stores the generated object and returns JSON with the signed URL and object key.</p>
-  <pre><code>GET https://{site}/v1/avatar/link?id=robot@hashavatar.app&amp;algorithm=sha512&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+  <pre><code>GET https://{site}/v1/avatar/link?id=robot@hashavatar.app&amp;algorithm=sha512&amp;kind=robot&amp;background=white&amp;accessory=glasses&amp;color=gold&amp;expression=happy&amp;shape=circle&amp;format=webp&amp;size=256</code></pre>
 </section>
 <section class="card">
   <h2>Open Source</h2>
@@ -2421,7 +2681,7 @@ fn render_docs_html(csp_nonce: &CspNonce) -> String {
         "Reference documentation for the hashavatar.app public avatar API, storage link endpoint, metrics, and namespace-aware identity contract.",
         "/docs",
         "API Reference",
-        "This is the product-facing reference for the public API. The same identity, tenant, style version, hash algorithm, kind, background, size, and format are intended to remain stable within a major release.",
+        "This is the product-facing reference for the public API. The same identity, tenant, style version, hash algorithm, avatar family, style options, size, and format are intended to remain stable within a major release.",
         &format!(
             r#"
 <section class="card">
@@ -2438,7 +2698,7 @@ fn render_docs_html(csp_nonce: &CspNonce) -> String {
   <section class="card">
     <h2>Namespace Support</h2>
     <p>Use <code>tenant</code> and <code>style_version</code> to keep visual identity spaces separate between products or rollout phases.</p>
-    <pre><code>GET https://{site}/v1/avatar?id=wizard@hashavatar.app&amp;tenant=acme&amp;style_version=v2&amp;algorithm=xxh3-128&amp;kind=wizard&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+    <pre><code>GET https://{site}/v1/avatar?id=wizard@hashavatar.app&amp;tenant=acme&amp;style_version=v2&amp;algorithm=xxh3-128&amp;kind=wizard&amp;background=white&amp;accessory=hat&amp;color=deep-sea-blue&amp;expression=cool&amp;shape=squircle&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
     <h2>Anonymous IDs</h2>
@@ -2517,7 +2777,7 @@ fn render_privacy_html(csp_nonce: &CspNonce) -> String {
   <h2>What The Service Receives</h2>
   <ul>
     <li>the opaque identifier you put in the request, such as an internal id, username, or one-way hash</li>
-    <li>request parameters such as avatar type, size, format, and background</li>
+    <li>request parameters such as avatar type, style options, size, format, and background</li>
     <li>standard HTTP metadata handled by the server, reverse proxy, and CDN, such as IP address, user agent, referrer, and request timing</li>
   </ul>
 </section>
@@ -2556,6 +2816,10 @@ struct AvatarQuery {
     id: Option<String>,
     kind: Option<String>,
     background: Option<String>,
+    accessory: Option<String>,
+    color: Option<String>,
+    expression: Option<String>,
+    shape: Option<String>,
     format: Option<String>,
     algorithm: Option<String>,
     size: Option<u32>,
@@ -2614,7 +2878,7 @@ impl FromStr for AvatarRequestFormat {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct AvatarRequest {
     identity: String,
     namespace_tenant: String,
@@ -2622,6 +2886,10 @@ struct AvatarRequest {
     algorithm: AvatarHashAlgorithm,
     kind: AvatarKind,
     background: AvatarBackground,
+    accessory: AvatarAccessory,
+    color: AvatarColor,
+    expression: AvatarExpression,
+    shape: AvatarShape,
     format: AvatarRequestFormat,
     size: u32,
     persist: bool,
@@ -2663,6 +2931,26 @@ impl AvatarRequest {
                 .as_deref()
                 .and_then(|raw| AvatarBackground::from_str(raw).ok())
                 .unwrap_or(AvatarBackground::Themed),
+            accessory: query
+                .accessory
+                .as_deref()
+                .and_then(|raw| AvatarAccessory::from_str(raw).ok())
+                .unwrap_or(DEFAULT_ACCESSORY),
+            color: query
+                .color
+                .as_deref()
+                .and_then(|raw| AvatarColor::from_str(raw).ok())
+                .unwrap_or(DEFAULT_COLOR),
+            expression: query
+                .expression
+                .as_deref()
+                .and_then(|raw| AvatarExpression::from_str(raw).ok())
+                .unwrap_or(DEFAULT_EXPRESSION),
+            shape: query
+                .shape
+                .as_deref()
+                .and_then(|raw| AvatarShape::from_str(raw).ok())
+                .unwrap_or(DEFAULT_SHAPE),
             format: query
                 .format
                 .as_deref()
@@ -2681,6 +2969,33 @@ impl AvatarRequest {
         validate_namespace_component("tenant", &self.namespace_tenant)?;
         validate_namespace_component("style_version", &self.namespace_style)?;
         Ok(())
+    }
+
+    fn effective_accessory(&self) -> AvatarAccessory {
+        if avatar_kind_supports_style_layers(self.kind) {
+            self.accessory
+        } else {
+            DEFAULT_ACCESSORY
+        }
+    }
+
+    fn effective_expression(&self) -> AvatarExpression {
+        if avatar_kind_supports_style_layers(self.kind) {
+            self.expression
+        } else {
+            DEFAULT_EXPRESSION
+        }
+    }
+
+    fn style_options(&self) -> AvatarStyleOptions {
+        AvatarStyleOptions::new(
+            self.kind,
+            self.background,
+            self.effective_accessory(),
+            self.color,
+            self.effective_expression(),
+            self.shape,
+        )
     }
 }
 
@@ -2831,6 +3146,10 @@ mod tests {
             algorithm: DEFAULT_HASH_ALGORITHM,
             kind: AvatarKind::Cat,
             background: AvatarBackground::Themed,
+            accessory: DEFAULT_ACCESSORY,
+            color: DEFAULT_COLOR,
+            expression: DEFAULT_EXPRESSION,
+            shape: DEFAULT_SHAPE,
             format,
             size: 256,
             persist: false,
@@ -2954,6 +3273,29 @@ mod tests {
     }
 
     #[test]
+    fn rendered_index_exposes_avatar_style_controls() {
+        let nonce = CspNonce("testnonce".to_string());
+        let html = render_index_html(&nonce, false);
+
+        assert!(html.contains(r#"<select id="accessory">"#));
+        assert!(html.contains(r#"<select id="color">"#));
+        assert!(html.contains(r#"<select id="expression">"#));
+        assert!(html.contains(r#"<select id="shape">"#));
+        assert!(html.contains(
+            r#"value="cat" data-identity="cat@hashavatar.app" data-supports-layers="true""#
+        ));
+        assert!(html.contains(
+            r#"value="planet" data-identity="planet@hashavatar.app" data-supports-layers="false""#
+        ));
+        assert!(html.contains("syncStyleLayerAvailability();"));
+        assert!(html.contains("accessoryEl.disabled = !supportsLayers;"));
+        assert!(html.contains("accessory: accessoryEl.value"));
+        assert!(html.contains("color: colorEl.value"));
+        assert!(html.contains("expression: expressionEl.value"));
+        assert!(html.contains("shape: shapeEl.value"));
+    }
+
+    #[test]
     fn render_json_ld_escapes_script_end_tags() {
         let nonce = CspNonce("testnonce".to_string());
         let html = render_json_ld(
@@ -3017,6 +3359,23 @@ mod tests {
     }
 
     #[test]
+    fn client_ip_uses_rightmost_untrusted_forwarded_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("192.0.2.123, 203.0.113.99, 10.89.42.10"),
+        );
+
+        let peer_ip = IpAddr::from([10, 89, 42, 10]);
+        let trusted_proxies = TrustedProxies::parse("10.89.42.0/24").expect("trusted proxy CIDR");
+
+        assert_eq!(
+            client_ip(&headers, peer_ip, &trusted_proxies),
+            "203.0.113.99"
+        );
+    }
+
+    #[test]
     fn client_ip_falls_back_to_peer_when_trusted_header_is_invalid() {
         let mut headers = HeaderMap::new();
         headers.insert("cf-connecting-ip", HeaderValue::from_static("not an ip"));
@@ -3047,7 +3406,7 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_svg_with_hashavatar_0_9() {
+    fn build_avatar_asset_renders_svg_with_hashavatar_0_10() {
         let request = test_avatar_request(AvatarRequestFormat::Svg);
         let asset = build_avatar_asset(&request).expect("svg avatar should render");
         let body = std::str::from_utf8(&asset.body).expect("svg should be utf8");
@@ -3070,6 +3429,56 @@ mod tests {
             assert!(asset.object_key.contains(algorithm.as_str()));
             assert!(object_keys.insert(asset.object_key));
         }
+    }
+
+    #[test]
+    fn build_avatar_asset_supports_explicit_style_layers() {
+        let base = test_avatar_request(AvatarRequestFormat::Svg);
+        let base_asset = build_avatar_asset(&base).expect("base avatar should render");
+
+        let mut request = base;
+        request.accessory = AvatarAccessory::Glasses;
+        request.color = AvatarColor::Gold;
+        request.expression = AvatarExpression::Happy;
+        request.shape = AvatarShape::Circle;
+
+        let styled_asset = build_avatar_asset(&request).expect("styled avatar should render");
+
+        assert_eq!(styled_asset.content_type, "image/svg+xml");
+        assert_ne!(base_asset.cache_key, styled_asset.cache_key);
+        assert_ne!(base_asset.object_key, styled_asset.object_key);
+        assert!(
+            styled_asset
+                .object_key
+                .contains("/glasses/gold/happy/circle/")
+        );
+    }
+
+    #[test]
+    fn build_avatar_asset_normalizes_unsupported_accessory_layers() {
+        let mut unsupported = test_avatar_request(AvatarRequestFormat::Svg);
+        unsupported.kind = AvatarKind::Planet;
+        unsupported.accessory = AvatarAccessory::Glasses;
+        unsupported.color = AvatarColor::Gold;
+        unsupported.expression = AvatarExpression::Happy;
+        unsupported.shape = AvatarShape::Circle;
+
+        let mut normalized = unsupported.clone();
+        normalized.accessory = DEFAULT_ACCESSORY;
+        normalized.expression = DEFAULT_EXPRESSION;
+
+        let unsupported_asset =
+            build_avatar_asset(&unsupported).expect("unsupported style avatar should render");
+        let normalized_asset =
+            build_avatar_asset(&normalized).expect("normalized style avatar should render");
+
+        assert_eq!(unsupported_asset.cache_key, normalized_asset.cache_key);
+        assert_eq!(unsupported_asset.object_key, normalized_asset.object_key);
+        assert!(
+            unsupported_asset
+                .object_key
+                .contains("/planet/themed/none/gold/default/circle/")
+        );
     }
 
     #[test]

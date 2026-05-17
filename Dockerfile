@@ -17,6 +17,7 @@ WORKDIR /app
 COPY --from=build /usr/local/bin/hashavatar-api /usr/local/bin/hashavatar-api
 
 ENV PORT=8080
+ENV PUBLIC_WEBSITE_HOST=0.0.0.0
 EXPOSE 8080
 USER appuser
 CMD ["hashavatar-api"]

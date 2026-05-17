@@ -10,10 +10,13 @@ grep -q 'MAX_RATE_LIMIT_BUCKETS' src/main.rs \
     || fail "rate limiter capacity constant is missing"
 grep -q 'struct RateLimiterState' src/main.rs \
     || fail "rate limiter bounded state is missing"
-grep -q 'evict_oldest_if_full' src/main.rs \
-    || fail "rate limiter must evict when the bucket bound is reached"
-grep -q 'VecDeque<String>' src/main.rs \
-    || fail "rate limiter must track oldest buckets for eviction"
+grep -q 'LruCache<String, RateBucket>' src/main.rs \
+    || fail "rate limiter must use bounded O(1) LRU storage"
+grep -q 'LruCache::new' src/main.rs \
+    || fail "rate limiter LRU capacity initialization is missing"
+if grep -q 'VecDeque<String>' src/main.rs || grep -q 'order.retain' src/main.rs; then
+    fail "rate limiter must not use linear VecDeque touch operations"
+fi
 grep -q 'into_make_service_with_connect_info::<SocketAddr>' src/main.rs \
     || fail "server must expose peer socket addresses to handlers"
 grep -q 'TRUSTED_PROXIES_ENV' src/main.rs \
@@ -59,6 +62,8 @@ grep -q 'rate_limit_key_is_route_and_ip_scoped' src/main.rs \
     || fail "rate limiter route/IP scoping regression test is missing"
 grep -q 'client_ip_ignores_forwarded_headers_from_untrusted_peers' src/main.rs \
     || fail "forwarded-header spoofing regression test is missing"
+grep -q 'client_ip_uses_rightmost_untrusted_forwarded_ip' src/main.rs \
+    || fail "forwarded-header chain regression test is missing"
 grep -q 'internal_error_does_not_expose_details' src/main.rs \
     || fail "internal error disclosure regression test is missing"
 grep -q 'build_avatar_asset_rejects_oversized_namespace' src/main.rs \

@@ -64,7 +64,7 @@ grep -q '"status":"ok"' "$TMP_DIR/health.json"
 grep -q '"service":"hashavatar-api"' "$TMP_DIR/health.json"
 
 curl -sSf -D "$TMP_DIR/svg.headers" \
-    "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&kind=cat&background=themed&format=svg&size=256" \
+    "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&kind=cat&background=themed&accessory=glasses&color=gold&expression=happy&shape=circle&format=svg&size=256" \
     -o "$TMP_DIR/avatar.svg"
 grep -q '^<svg ' "$TMP_DIR/avatar.svg"
 grep -qi '^content-type: image/svg+xml' "$TMP_DIR/svg.headers"
@@ -72,6 +72,11 @@ grep -qi '^x-content-type-options: nosniff' "$TMP_DIR/svg.headers"
 grep -qi '^x-frame-options: DENY' "$TMP_DIR/svg.headers"
 grep -qi '^referrer-policy: no-referrer' "$TMP_DIR/svg.headers"
 grep -qi '^content-security-policy:' "$TMP_DIR/svg.headers"
+
+curl -sSf \
+    "http://127.0.0.1:$port/v1/avatar?id=planet@hashavatar.app&kind=planet&background=themed&accessory=glasses&color=gold&expression=happy&shape=circle&format=svg&size=256" \
+    -o "$TMP_DIR/unsupported-accessory.svg"
+grep -q '^<svg ' "$TMP_DIR/unsupported-accessory.svg"
 
 curl -sSf -D "$TMP_DIR/png.headers" \
     "http://127.0.0.1:$port/v1/avatar?id=robot@hashavatar.app&kind=robot&background=white&format=png&size=128" \

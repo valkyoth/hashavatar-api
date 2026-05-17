@@ -1,6 +1,6 @@
 [package]
 name = "hashavatar-api"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
 rust-version = "1.95"
 description = "Public avatar API and landing page for hashavatar"
@@ -12,11 +12,12 @@ documentation = "https://github.com/valkyoth/hashavatar-api"
 [dependencies]
 aws-config = { version = "1.8.16", default-features = false, features = ["rt-tokio"] }
 aws-sdk-s3 = { version = "1.131.0", default-features = false, features = ["rt-tokio", "sigv4a"] }
-hashavatar = { version = "0.9.0", features = ["blake3", "xxh3"] }
+hashavatar = { version = "0.10.0", features = ["blake3", "xxh3"] }
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "query", "json"] }
 getrandom = { version = "0.4.2", default-features = false }
 ipnet = { version = "2.12.0", default-features = false }
+lru = { version = "0.16.4", default-features = false }
 serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.149", default-features = false, features = ["std"] }
 sha2 = { version = "0.11.0", default-features = false, features = ["alloc"] }

@@ -11,7 +11,7 @@ audit, SBOM, reproducibility, smoke, and GitHub CodeQL default setup checks.
 
 ## Current Status
 
-The current service version is `0.9.0`.
+The current service version is `0.10.0`.
 
 Implemented now:
 
@@ -25,7 +25,7 @@ Implemented now:
 - Namespace-aware tenant and style-version parameters.
 - Selectable identity hash algorithms: `SHA-512`, `BLAKE3`, and `XXH3`.
 - `WebP`, `PNG`, `JPEG`, `GIF`, and `SVG` responses.
-- Avatar families from `hashavatar 0.9.0`: `cat`, `dog`, `robot`, `fox`,
+- Avatar families from `hashavatar 0.10.0`: `cat`, `dog`, `robot`, `fox`,
   `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`,
   `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`,
   `pizza`, `icecream`, `octopus`, and `knight`.
@@ -55,7 +55,7 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Service license | `EUPL-1.2` |
-| Renderer crate | `hashavatar 0.9.0` |
+| Renderer crate | `hashavatar 0.10.0` |
 | MSRV | Rust `1.95.0` |
 | Runtime container | Wolfi |
 | HTTP framework | `axum` |
@@ -77,7 +77,7 @@ lives in [PROVENANCE.md](PROVENANCE.md). URL stability expectations live in
 ### Query Avatar
 
 ```text
-GET /v1/avatar?id=cat@hashavatar.app&algorithm=sha512&kind=cat&background=themed&format=webp&size=256
+GET /v1/avatar?id=cat@hashavatar.app&algorithm=sha512&kind=cat&background=themed&accessory=none&color=default&expression=default&shape=square&format=webp&size=256
 ```
 
 Important query parameters:
@@ -90,6 +90,10 @@ Important query parameters:
 | `algorithm` | `sha512` | Identity hash algorithm: `sha512`, `blake3`, or `xxh3-128`. |
 | `kind` | `cat` | Avatar family. |
 | `background` | `themed` | Background mode. |
+| `accessory` | `none` | Optional style layer: `none`, `glasses`, `hat`, `headphones`, `crown`, `bowtie`, `eyepatch`, `scarf`, `halo`, or `horns`. |
+| `color` | `default` | Accent color: `default`, `neon-mint`, `pastel-pink`, `crimson`, `gold`, or `deep-sea-blue`. |
+| `expression` | `default` | Facial expression: `default`, `happy`, `grumpy`, `surprised`, `sleepy`, `winking`, `cool`, or `crying`. |
+| `shape` | `square` | Avatar crop shape: `square`, `circle`, `squircle`, `hexagon`, or `octagon`. |
 | `format` | `webp` | `webp`, `png`, `jpg`, `jpeg`, `gif`, or `svg`. |
 | `size` | `256` | Square image size in pixels. |
 | `persist` | `false` | Store through configured S3-compatible backend when enabled. |
@@ -101,13 +105,13 @@ GET /avatar/cat/cat@hashavatar.app/svg
 GET /avatar/fox/fox@hashavatar.app/png
 ```
 
-Path requests use the default tenant, style version, themed background, and
-`256` pixel size.
+Path requests use the default tenant, style version, themed background, default
+style layers, and `256` pixel size.
 
 ### Signed Storage Link
 
 ```text
-GET /v1/avatar/link?id=robot@hashavatar.app&kind=robot&background=white&format=webp&size=256
+GET /v1/avatar/link?id=robot@hashavatar.app&kind=robot&background=white&accessory=glasses&color=gold&expression=happy&shape=circle&format=webp&size=256
 ```
 
 This endpoint requires object storage configuration. It renders and stores the
@@ -134,12 +138,17 @@ before calling the renderer. Namespace components may contain only ASCII
 letters, digits, hyphens, and underscores so they are safe to use in
 object-storage keys.
 
+Accessory and expression layers apply to character-style avatar families.
+Object-style families such as `planet`, `rocket`, `paws`, `mushroom`,
+`cactus`, `cupcake`, `pizza`, and `icecream` are normalized to
+`accessory=none` and `expression=default`.
+
 ## Determinism And Caching
 
 Avatar responses are deterministic for the tuple:
 
 ```text
-tenant + style_version + algorithm + id + kind + background + format + size
+tenant + style_version + algorithm + id + kind + background + accessory + color + expression + shape + format + size
 ```
 
 This makes aggressive edge caching appropriate. Avatar responses include:
@@ -168,7 +177,7 @@ cargo run
 Default bind:
 
 ```text
-0.0.0.0:8080
+127.0.0.1:8080
 ```
 
 Use a different port:
@@ -176,6 +185,9 @@ Use a different port:
 ```bash
 PORT=3011 PUBLIC_WEBSITE_HOST=127.0.0.1 cargo run
 ```
+
+Container and deployment examples set `PUBLIC_WEBSITE_HOST=0.0.0.0`
+explicitly so the service is reachable through the configured reverse proxy.
 
 Smoke test a local server:
 

@@ -7,8 +7,8 @@ local test and release gates.
 
 | Risk | Control |
 | --- | --- |
-| Unbounded rate-limit state | The rate limiter uses bounded LRU storage and has a regression test for unique attacker keys. |
-| Forwarded-header spoofing | `X-Forwarded-For`, `X-Real-IP`, and `CF-Connecting-IP` are honored only when the direct peer is a configured trusted proxy. |
+| Unbounded or expensive rate-limit state | The rate limiter uses bounded `LruCache` storage for O(1) LRU updates and has regression tests for unique attacker keys. |
+| Forwarded-header spoofing | `X-Forwarded-For`, `X-Real-IP`, and `CF-Connecting-IP` are honored only when the direct peer is a configured trusted proxy; `X-Forwarded-For` chains are resolved from the rightmost untrusted address. |
 | Verbose internal errors | Internal errors are logged with `tracing`; clients receive a generic static 500 body. |
 | Browser-side content confusion | Responses receive CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy` headers. |
 | S3 prefix escaping | Tenant and style-version namespaces are limited to ASCII letters, digits, hyphens, and underscores before object keys are built. |

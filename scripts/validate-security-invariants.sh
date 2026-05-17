@@ -8,8 +8,12 @@ fail() {
 
 grep -q 'MAX_RATE_LIMIT_BUCKETS' src/main.rs \
     || fail "rate limiter capacity constant is missing"
-grep -q 'LruCache' src/main.rs \
-    || fail "rate limiter must use bounded LRU storage"
+grep -q 'struct RateLimiterState' src/main.rs \
+    || fail "rate limiter bounded state is missing"
+grep -q 'evict_oldest_if_full' src/main.rs \
+    || fail "rate limiter must evict when the bucket bound is reached"
+grep -q 'VecDeque<String>' src/main.rs \
+    || fail "rate limiter must track oldest buckets for eviction"
 grep -q 'into_make_service_with_connect_info::<SocketAddr>' src/main.rs \
     || fail "server must expose peer socket addresses to handlers"
 grep -q 'TRUSTED_PROXIES_ENV' src/main.rs \
@@ -53,6 +57,14 @@ grep -q 'build_avatar_asset_rejects_oversized_namespace' src/main.rs \
     || fail "hashavatar namespace validation regression test is missing"
 grep -q 'object_key_uses_full_sha256_digest' src/main.rs \
     || fail "full object-key digest regression test is missing"
+grep -q 'content_security_policy_uses_nonce_without_unsafe_inline' src/main.rs \
+    || fail "CSP nonce regression test is missing"
+grep -q 'render_json_ld_escapes_script_end_tags' src/main.rs \
+    || fail "JSON-LD script breakout regression test is missing"
+grep -q 'escape_html_attribute_handles_single_quotes' src/main.rs \
+    || fail "attribute escaping regression test is missing"
+grep -q 'etag_uses_full_sha256_digest' src/main.rs \
+    || fail "full ETag digest regression test is missing"
 
 if [ -e .github/workflows/codeql.yml ] || [ -e .github/codeql/codeql-config.yml ]; then
     fail "CodeQL default setup is enabled in GitHub; remove repo-level advanced CodeQL configuration"

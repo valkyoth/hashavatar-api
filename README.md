@@ -11,7 +11,7 @@ audit, SBOM, reproducibility, smoke, and GitHub CodeQL default setup checks.
 
 ## Current Status
 
-The current service version is `0.7.0`.
+The current service version is `0.8.0`.
 
 Implemented now:
 
@@ -25,7 +25,7 @@ Implemented now:
 - Namespace-aware tenant and style-version parameters.
 - Selectable identity hash algorithms: `SHA-512`, `BLAKE3`, and `XXH3`.
 - `WebP`, `PNG`, `JPEG`, `GIF`, and `SVG` responses.
-- Avatar families from `hashavatar 0.7.0`: `cat`, `dog`, `robot`, `fox`,
+- Avatar families from `hashavatar 0.8.0`: `cat`, `dog`, `robot`, `fox`,
   `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`,
   `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`,
   `pizza`, `icecream`, `octopus`, and `knight`.
@@ -55,7 +55,7 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Service license | `EUPL-1.2` |
-| Renderer crate | `hashavatar 0.7.0` |
+| Renderer crate | `hashavatar 0.8.0` |
 | MSRV | Rust `1.95.0` |
 | Runtime container | Wolfi |
 | HTTP framework | `axum` |
@@ -234,6 +234,8 @@ The repository includes:
   and internal error disclosure behavior
 - local HTTP smoke tests for health, SVG/PNG rendering, security headers, and
   invalid namespace rejection
+- local Podman smoke tests for the Wolfi image when
+  `HASHAVATAR_API_GATE_PODMAN=1` is set
 - `cargo deny` dependency and license policy
 - RustSec advisory scanning
 - SPDX and CycloneDX SBOM generation
@@ -251,6 +253,16 @@ For self-hosting with Podman and Fluxheim, see:
 
 The compose example builds this service with the Wolfi runtime image and places
 Fluxheim in front of it as the public TLS reverse proxy.
+
+Release tags publish a Wolfi runtime image to GitHub Container Registry:
+
+```text
+ghcr.io/valkyoth/hashavatar-api:<version>
+ghcr.io/valkyoth/hashavatar-api:<version>-wolfi
+```
+
+Manual workflow runs from the default branch also publish `dev`, `dev-wolfi`,
+`latest`, and `latest-wolfi` tags.
 
 ## Related Projects
 

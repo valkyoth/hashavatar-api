@@ -1,17 +1,17 @@
+use std::collections::{HashMap, VecDeque};
 use std::net::{IpAddr, SocketAddr};
-use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use aws_config::{BehaviorVersion, Region};
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_s3::config::Builder as S3ConfigBuilder;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
-use axum::extract::{ConnectInfo, Path, Query, Request, State};
+use axum::extract::{ConnectInfo, Extension, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -49,6 +49,7 @@ const MAX_SIZE: u32 = 1024;
 const MAX_ID_BYTES: usize = 512;
 const MAX_NAMESPACE_COMPONENT_BYTES: usize = 64;
 const PRESET_PAGE_SIZE: usize = 12;
+static CSP_NONCE_FALLBACK_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 struct AppState {
     storage: Option<Arc<S3Storage>>,
@@ -120,15 +121,57 @@ fn init_logging() {
     let _ = tracing_subscriber::fmt::try_init();
 }
 
-async fn add_security_headers(request: Request, next: Next) -> Response {
+#[derive(Clone)]
+struct CspNonce(String);
+
+impl CspNonce {
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+fn generate_csp_nonce() -> CspNonce {
+    let mut bytes = [0_u8; 16];
+    if let Err(error) = getrandom::fill(&mut bytes) {
+        let counter = CSP_NONCE_FALLBACK_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let fallback = Sha256::digest(format!("{now}:{counter}:{error}").as_bytes());
+        bytes.copy_from_slice(&fallback[..16]);
+        tracing::warn!(%error, "falling back to deterministic CSP nonce entropy");
+    }
+
+    let mut nonce = String::with_capacity(32);
+    for byte in bytes {
+        nonce.push_str(&format!("{byte:02x}"));
+    }
+    CspNonce(nonce)
+}
+
+fn content_security_policy(nonce: &CspNonce) -> String {
+    format!(
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'nonce-{nonce}'; script-src 'self' 'nonce-{nonce}'; connect-src 'self'; form-action 'self'",
+        nonce = nonce.as_str(),
+    )
+}
+
+async fn add_security_headers(mut request: Request, next: Next) -> Response {
+    let csp_nonce = generate_csp_nonce();
+    request.extensions_mut().insert(csp_nonce.clone());
+
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
+    let csp = content_security_policy(&csp_nonce);
 
     headers.insert(
         header::HeaderName::from_static("content-security-policy"),
-        HeaderValue::from_static(
-            "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; form-action 'self'",
-        ),
+        HeaderValue::from_str(&csp).unwrap_or_else(|_| {
+            HeaderValue::from_static(
+                "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'",
+            )
+        }),
     );
     headers.insert(
         header::HeaderName::from_static("permissions-policy"),
@@ -150,24 +193,24 @@ async fn add_security_headers(request: Request, next: Next) -> Response {
     response
 }
 
-async fn index() -> Html<String> {
-    Html(render_index_html())
+async fn index(Extension(csp_nonce): Extension<CspNonce>) -> Html<String> {
+    Html(render_index_html(&csp_nonce))
 }
 
-async fn help_page() -> Html<String> {
-    Html(render_help_html())
+async fn help_page(Extension(csp_nonce): Extension<CspNonce>) -> Html<String> {
+    Html(render_help_html(&csp_nonce))
 }
 
-async fn docs_page() -> Html<String> {
-    Html(render_docs_html())
+async fn docs_page(Extension(csp_nonce): Extension<CspNonce>) -> Html<String> {
+    Html(render_docs_html(&csp_nonce))
 }
 
-async fn terms_page() -> Html<String> {
-    Html(render_terms_html())
+async fn terms_page(Extension(csp_nonce): Extension<CspNonce>) -> Html<String> {
+    Html(render_terms_html(&csp_nonce))
 }
 
-async fn privacy_page() -> Html<String> {
-    Html(render_privacy_html())
+async fn privacy_page(Extension(csp_nonce): Extension<CspNonce>) -> Html<String> {
+    Html(render_privacy_html(&csp_nonce))
 }
 
 async fn robots_txt() -> impl IntoResponse {
@@ -250,9 +293,9 @@ async fn openapi_json() -> impl IntoResponse {
                         {"name":"id","in":"query","schema":{"type":"string"}},
                         {"name":"tenant","in":"query","schema":{"type":"string"}},
                         {"name":"style_version","in":"query","schema":{"type":"string"}},
-                        {"name":"algorithm","in":"query","schema":{"type":"string","enum": AvatarHashAlgorithm::ALL.map(|algorithm| algorithm.as_str())}},
-                        {"name":"kind","in":"query","schema":{"type":"string","enum": AvatarKind::ALL.map(|kind| kind.as_str())}},
-                        {"name":"background","in":"query","schema":{"type":"string","enum": AvatarBackground::ALL.map(|background| background.as_str())}},
+                        {"name":"algorithm","in":"query","schema":{"type":"string","enum": AvatarHashAlgorithm::ALL.iter().map(|algorithm| algorithm.as_str()).collect::<Vec<_>>()}},
+                        {"name":"kind","in":"query","schema":{"type":"string","enum": AvatarKind::ALL.iter().map(|kind| kind.as_str()).collect::<Vec<_>>()}},
+                        {"name":"background","in":"query","schema":{"type":"string","enum": AvatarBackground::ALL.iter().map(|background| background.as_str()).collect::<Vec<_>>()}},
                         {"name":"format","in":"query","schema":{"type":"string","enum":["webp","png","jpg","gif","svg"]}},
                         {"name":"size","in":"query","schema":{"type":"integer","minimum": MIN_SIZE, "maximum": MAX_SIZE}}
                     ],
@@ -389,13 +432,72 @@ impl RateLimitRoute {
 
 #[derive(Clone)]
 struct RateLimiter {
-    buckets: Arc<Mutex<lru::LruCache<String, RateBucket>>>,
+    buckets: Arc<Mutex<RateLimiterState>>,
 }
 
 #[derive(Clone, Copy)]
 struct RateBucket {
     started_at: Instant,
     count: u32,
+}
+
+struct RateLimiterState {
+    capacity: usize,
+    buckets: HashMap<String, RateBucket>,
+    order: VecDeque<String>,
+}
+
+impl RateLimiterState {
+    fn new(capacity: usize) -> Self {
+        Self {
+            capacity: capacity.max(1),
+            buckets: HashMap::new(),
+            order: VecDeque::new(),
+        }
+    }
+
+    fn touch(&mut self, key: &str) {
+        self.order.retain(|existing| existing != key);
+        self.order.push_back(key.to_string());
+    }
+
+    fn evict_oldest_if_full(&mut self) {
+        while self.buckets.len() >= self.capacity {
+            match self.order.pop_front() {
+                Some(key) => {
+                    if self.buckets.remove(&key).is_some() {
+                        return;
+                    }
+                }
+                None => return,
+            }
+        }
+    }
+
+    fn bucket_for(&mut self, key: String, now: Instant) -> &mut RateBucket {
+        if self.buckets.contains_key(&key) {
+            self.touch(&key);
+        } else {
+            self.evict_oldest_if_full();
+            self.buckets.insert(
+                key.clone(),
+                RateBucket {
+                    started_at: now,
+                    count: 0,
+                },
+            );
+            self.touch(&key);
+        }
+
+        self.buckets
+            .get_mut(&key)
+            .expect("rate limiter bucket is present after insertion")
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.buckets.len()
+    }
 }
 
 #[derive(Clone, Default)]
@@ -446,9 +548,8 @@ impl Default for RateLimiter {
 
 impl RateLimiter {
     fn with_capacity(capacity: usize) -> Self {
-        let capacity = NonZeroUsize::new(capacity.max(1)).expect("capacity is non-zero");
         Self {
-            buckets: Arc::new(Mutex::new(lru::LruCache::new(capacity))),
+            buckets: Arc::new(Mutex::new(RateLimiterState::new(capacity))),
         }
     }
 
@@ -461,10 +562,7 @@ impl RateLimiter {
                 poisoned.into_inner()
             }
         };
-        let bucket = buckets.get_or_insert_mut(key, || RateBucket {
-            started_at: now,
-            count: 0,
-        });
+        let bucket = buckets.bucket_for(key, now);
         if now.duration_since(bucket.started_at) >= RATE_LIMIT_WINDOW {
             bucket.started_at = now;
             bucket.count = 0;
@@ -933,9 +1031,9 @@ fn cache_headers(etag: &str) -> HeaderMap {
 
 fn etag_for(cache_key: &str) -> String {
     let digest = Sha256::digest(cache_key.as_bytes());
-    let mut encoded = String::with_capacity(18);
+    let mut encoded = String::with_capacity(66);
     encoded.push('"');
-    for byte in &digest[..8] {
+    for byte in digest {
         encoded.push_str(&format!("{byte:02x}"));
     }
     encoded.push('"');
@@ -1212,6 +1310,7 @@ fn escape_html_attribute(input: &str) -> String {
     input
         .replace('&', "&amp;")
         .replace('"', "&quot;")
+        .replace('\'', "&#39;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
 }
@@ -1273,7 +1372,8 @@ fn hash_algorithm_label(algorithm: AvatarHashAlgorithm) -> &'static str {
 
 fn hash_algorithm_options_html(selected: AvatarHashAlgorithm) -> String {
     AvatarHashAlgorithm::ALL
-        .into_iter()
+        .iter()
+        .copied()
         .map(|algorithm| {
             format!(
                 r#"<label class="algorithm-option"><input type="radio" name="algorithm" value="{value}"{checked} /><span>{label}</span></label>"#,
@@ -1288,7 +1388,8 @@ fn hash_algorithm_options_html(selected: AvatarHashAlgorithm) -> String {
 
 fn kind_options_html(selected: AvatarKind) -> String {
     AvatarKind::ALL
-        .into_iter()
+        .iter()
+        .copied()
         .map(|kind| {
             format!(
                 r#"<option value="{value}" data-identity="{value}@hashavatar.app"{selected}>{label}</option>"#,
@@ -1303,7 +1404,8 @@ fn kind_options_html(selected: AvatarKind) -> String {
 
 fn background_options_html(selected: AvatarBackground) -> String {
     AvatarBackground::ALL
-        .into_iter()
+        .iter()
+        .copied()
         .map(|background| {
             format!(
                 r#"<option value="{value}"{selected}>{label}</option>"#,
@@ -1349,7 +1451,8 @@ struct PresetExample {
 
 fn preset_examples() -> Vec<PresetExample> {
     AvatarKind::ALL
-        .into_iter()
+        .iter()
+        .copied()
         .map(|kind| PresetExample {
             label: avatar_kind_label(kind),
             id: match kind {
@@ -1406,7 +1509,7 @@ fn preset_examples_json() -> String {
     serde_json::to_string(&preset_examples()).expect("preset examples should serialize")
 }
 
-fn render_meta_tags(title: &str, description: &str, path: &str) -> String {
+fn render_meta_tags(title: &str, description: &str, path: &str, csp_nonce: &CspNonce) -> String {
     let canonical = if path == "/" {
         format!("{SITE_URL}/")
     } else {
@@ -1442,21 +1545,31 @@ fn render_meta_tags(title: &str, description: &str, path: &str) -> String {
         canonical = escape_html_attribute(&canonical),
         image = escape_html_attribute(&preview_image),
         site_name = escape_html_attribute(SITE_NAME),
-        json_ld = render_json_ld(&full_title, description, &canonical),
+        json_ld = render_json_ld(&full_title, description, &canonical, csp_nonce),
     )
 }
 
-fn render_json_ld(title: &str, description: &str, canonical: &str) -> String {
-    let title = serde_json::to_string(title).unwrap_or_else(|_| "\"hashavatar.app\"".to_string());
-    let description = serde_json::to_string(description)
-        .unwrap_or_else(|_| "\"Deterministic avatar API\"".to_string());
-    let canonical = serde_json::to_string(canonical).unwrap_or_else(|_| format!("\"{SITE_URL}/\""));
-    let site_url = serde_json::to_string(SITE_URL).unwrap_or_else(|_| format!("\"{SITE_URL}\""));
-    let search_target = serde_json::to_string(&format!("{SITE_URL}/?id={{search_term_string}}"))
-        .unwrap_or_else(|_| format!("\"{SITE_URL}/?id={{search_term_string}}\""));
+fn json_script_string(value: &str, fallback: &str) -> String {
+    serde_json::to_string(value)
+        .or_else(|_| serde_json::to_string(fallback))
+        .unwrap_or_else(|_| "\"\"".to_string())
+        .replace("</", "<\\/")
+        .replace("<!--", "<\\u0021--")
+}
+
+fn render_json_ld(title: &str, description: &str, canonical: &str, csp_nonce: &CspNonce) -> String {
+    let title = json_script_string(title, "hashavatar.app");
+    let description = json_script_string(description, "Deterministic avatar API");
+    let canonical = json_script_string(canonical, &format!("{SITE_URL}/"));
+    let site_url = json_script_string(SITE_URL, SITE_URL);
+    let search_target = json_script_string(
+        &format!("{SITE_URL}/?id={{search_term_string}}"),
+        &format!("{SITE_URL}/?id={{search_term_string}}"),
+    );
+    let nonce = escape_html_attribute(csp_nonce.as_str());
 
     format!(
-        r#"<script type="application/ld+json">{{
+        r#"<script nonce="{nonce}" type="application/ld+json">{{
   "@context": "https://schema.org",
   "@type": "WebSite",
   "name": {title},
@@ -1468,7 +1581,7 @@ fn render_json_ld(title: &str, description: &str, canonical: &str) -> String {
     "query-input": "required name=search_term_string"
   }}
 }}</script>
-<script type="application/ld+json">{{
+<script nonce="{nonce}" type="application/ld+json">{{
   "@context": "https://schema.org",
   "@type": "WebPage",
   "name": {title},
@@ -1485,6 +1598,7 @@ fn render_json_ld(title: &str, description: &str, canonical: &str) -> String {
         canonical = canonical,
         site_url = site_url,
         search_target = search_target,
+        nonce = nonce,
     )
 }
 
@@ -1495,7 +1609,9 @@ fn render_page_html(
     eyebrow: &str,
     lead: &str,
     body: &str,
+    csp_nonce: &CspNonce,
 ) -> String {
+    let nonce = escape_html_attribute(csp_nonce.as_str());
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -1503,7 +1619,7 @@ fn render_page_html(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   {meta_tags}
-  <style>{styles}</style>
+  <style nonce="{nonce}">{styles}</style>
 </head>
 <body>
   <main>
@@ -1528,8 +1644,9 @@ fn render_page_html(
   </main>
 </body>
 </html>"#,
-        meta_tags = render_meta_tags(page_title, description, path),
+        meta_tags = render_meta_tags(page_title, description, path, csp_nonce),
         styles = shared_page_styles(),
+        nonce = nonce,
         site_name = SITE_NAME,
         eyebrow = eyebrow,
         page_title = page_title,
@@ -1541,8 +1658,9 @@ fn render_page_html(
     )
 }
 
-fn render_index_html() -> String {
+fn render_index_html(csp_nonce: &CspNonce) -> String {
     let description = "Deterministic procedural avatars for opaque user ids, stable usernames, and one-way hashes. Generate 23 avatar families as WebP, PNG, JPEG, GIF, or SVG.";
+    let nonce = escape_html_attribute(csp_nonce.as_str());
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -1550,7 +1668,7 @@ fn render_index_html() -> String {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   {meta_tags}
-  <style>
+  <style nonce="{nonce}">
     {styles}
     .hero {{
       display: grid;
@@ -1744,6 +1862,7 @@ fn render_index_html() -> String {
       display: grid;
       gap: 14px;
       margin-top: 24px;
+      width: 100%;
     }}
     .example-grid {{
       display: grid;
@@ -1940,7 +2059,7 @@ fn render_index_html() -> String {
           <div><strong>Tip:</strong> Every URL is deterministic, so you can embed it directly in your app.</div>
         </div>
 
-        <div class="examples" style="width:100%;">
+        <div class="examples">
           <div class="example-header">
             <div class="url-label">Preset Examples</div>
             <div id="example-page" class="example-page"></div>
@@ -1956,7 +2075,7 @@ fn render_index_html() -> String {
     </section>
     {footer}
   </main>
-  <script>
+  <script nonce="{nonce}">
     const identityEl = document.getElementById("identity");
     const algorithmEls = Array.from(document.querySelectorAll("input[name='algorithm']"));
     const tenantEl = document.getElementById("tenant");
@@ -2178,15 +2297,16 @@ fn render_index_html() -> String {
         format_options = format_options_html(AvatarRequestFormat::Webp),
         preset_examples = preset_examples_json(),
         preset_page_size = PRESET_PAGE_SIZE,
-        meta_tags = render_meta_tags("Public Avatar API", description, "/"),
+        meta_tags = render_meta_tags("Public Avatar API", description, "/", csp_nonce),
         styles = shared_page_styles(),
+        nonce = nonce,
         footer = render_footer_html(),
         repo = REPOSITORY_URL,
         crate_url = CRATE_URL,
     )
 }
 
-fn render_help_html() -> String {
+fn render_help_html(csp_nonce: &CspNonce) -> String {
     render_page_html(
         "Help",
         "Integration guide for using the hashavatar.app avatar API in web apps, frontends, and backends.",
@@ -2253,10 +2373,11 @@ avatarUrl.search = new URLSearchParams({{
             repo = REPOSITORY_URL,
             crate_url = CRATE_URL,
         ),
+        csp_nonce,
     )
 }
 
-fn render_docs_html() -> String {
+fn render_docs_html(csp_nonce: &CspNonce) -> String {
     render_page_html(
         "Docs",
         "Reference documentation for the hashavatar.app public avatar API, storage link endpoint, metrics, and namespace-aware identity contract.",
@@ -2311,10 +2432,11 @@ fn render_docs_html() -> String {
 "#,
             site = SITE_NAME,
         ),
+        csp_nonce,
     )
 }
 
-fn render_terms_html() -> String {
+fn render_terms_html(csp_nonce: &CspNonce) -> String {
     render_page_html(
         "Terms",
         "Best-effort service terms for the public hashavatar.app avatar API and demo website.",
@@ -2341,10 +2463,11 @@ fn render_terms_html() -> String {
   <p>This page is operational guidance, not legal advice. If you need formal legal terms for a business deployment, you should publish a reviewed version specific to your jurisdiction and operator entity.</p>
 </section>
 "#,
+        csp_nonce,
     )
 }
 
-fn render_privacy_html() -> String {
+fn render_privacy_html(csp_nonce: &CspNonce) -> String {
     render_page_html(
         "Privacy",
         "Privacy notice for hashavatar.app covering request data, logs, and optional object storage behavior.",
@@ -2378,6 +2501,7 @@ fn render_privacy_html() -> String {
   <p>You can inspect the implementation in the public <a class="inline-link" href="https://github.com/valkyoth/hashavatar-api" target="_blank" rel="noreferrer">API repository</a> and the reusable avatar renderer in the <a class="inline-link" href="https://crates.io/crates/hashavatar/" target="_blank" rel="noreferrer">Rust crate</a>.</p>
 </section>
 "#,
+        csp_nonce,
     )
 }
 
@@ -2726,6 +2850,58 @@ mod tests {
     }
 
     #[test]
+    fn content_security_policy_uses_nonce_without_unsafe_inline() {
+        let nonce = CspNonce("testnonce".to_string());
+        let policy = content_security_policy(&nonce);
+
+        assert!(policy.contains("style-src 'self' 'nonce-testnonce'"));
+        assert!(policy.contains("script-src 'self' 'nonce-testnonce'"));
+        assert!(!policy.contains("unsafe-inline"));
+    }
+
+    #[test]
+    fn rendered_index_applies_csp_nonce_to_inline_blocks() {
+        let nonce = CspNonce("testnonce".to_string());
+        let html = render_index_html(&nonce);
+
+        assert!(html.contains(r#"<style nonce="testnonce">"#));
+        assert!(html.contains(r#"<script nonce="testnonce">"#));
+        assert!(html.contains(r#"<script nonce="testnonce" type="application/ld+json">"#));
+    }
+
+    #[test]
+    fn render_json_ld_escapes_script_end_tags() {
+        let nonce = CspNonce("testnonce".to_string());
+        let html = render_json_ld(
+            "</script><script>alert(1)</script>",
+            "description",
+            "https://hashavatar.app/",
+            &nonce,
+        );
+
+        assert!(html.contains(r#"<\/script><script>alert(1)<\/script>"#));
+        assert!(!html.contains("</script><script>alert(1)</script>"));
+    }
+
+    #[test]
+    fn escape_html_attribute_handles_single_quotes() {
+        assert_eq!(
+            escape_html_attribute(r#"'"><tag>&"#),
+            "&#39;&quot;&gt;&lt;tag&gt;&amp;"
+        );
+    }
+
+    #[test]
+    fn etag_uses_full_sha256_digest() {
+        let etag = etag_for("example-cache-key");
+        let raw = etag.trim_matches('"');
+
+        assert_eq!(etag.len(), 66);
+        assert_eq!(raw.len(), 64);
+        assert!(raw.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    }
+
+    #[test]
     fn client_ip_ignores_forwarded_headers_from_untrusted_peers() {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", HeaderValue::from_static("203.0.113.99"));
@@ -2787,7 +2963,7 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_svg_with_hashavatar_0_7() {
+    fn build_avatar_asset_renders_svg_with_hashavatar_0_8() {
         let request = test_avatar_request(AvatarRequestFormat::Svg);
         let asset = build_avatar_asset(&request).expect("svg avatar should render");
         let body = std::str::from_utf8(&asset.body).expect("svg should be utf8");
@@ -2800,7 +2976,7 @@ mod tests {
     fn build_avatar_asset_supports_all_hash_algorithms() {
         let mut object_keys = std::collections::BTreeSet::new();
 
-        for algorithm in AvatarHashAlgorithm::ALL {
+        for algorithm in AvatarHashAlgorithm::ALL.iter().copied() {
             let mut request = test_avatar_request(AvatarRequestFormat::Svg);
             request.algorithm = algorithm;
 

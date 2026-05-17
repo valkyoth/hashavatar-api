@@ -1,0 +1,92 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/hashavatar-api-podman.XXXXXX")
+IMAGE="${HASHAVATAR_API_IMAGE:-hashavatar-api:local-wolfi}"
+CONTAINER_NAME="hashavatar-api-smoke-$$"
+EXPECTED_UID="${HASHAVATAR_API_EXPECTED_UID:-10001}"
+KEEP_LOGS="${HASHAVATAR_API_PODMAN_KEEP_LOGS:-0}"
+
+cleanup() {
+    status=$?
+    podman rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    if [ "$KEEP_LOGS" = "1" ] || [ "$status" -ne 0 ]; then
+        echo "podman smoke artifacts kept in $TMP_DIR" >&2
+    else
+        rm -rf "$TMP_DIR"
+    fi
+}
+trap cleanup EXIT INT TERM
+
+if [ -z "${CONTAINER_HOST:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]; then
+    CONTAINER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
+    export CONTAINER_HOST
+fi
+
+port=$(python3 - <<'PY'
+import socket
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    sock.bind(("127.0.0.1", 0))
+    print(sock.getsockname()[1])
+finally:
+    sock.close()
+PY
+)
+
+echo "podman smoke: image=$IMAGE port=$port"
+if [ -n "${CONTAINER_HOST:-}" ]; then
+    echo "podman smoke: CONTAINER_HOST=$CONTAINER_HOST"
+fi
+
+podman build -t "$IMAGE" -f "$ROOT_DIR/Dockerfile" "$ROOT_DIR"
+
+podman run -d \
+    --name "$CONTAINER_NAME" \
+    -e PORT=8080 \
+    -p "127.0.0.1:$port:8080" \
+    "$IMAGE" >/dev/null
+
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    status="$(curl -sS -o "$TMP_DIR/health.json" -w '%{http_code}' "http://127.0.0.1:$port/healthz" 2>/dev/null || true)"
+    if [ "$status" = "200" ]; then
+        break
+    fi
+    sleep 0.3
+done
+
+if [ "${status:-}" != "200" ]; then
+    echo "podman smoke failed: healthz returned ${status:-no response}" >&2
+    podman logs "$CONTAINER_NAME" >&2 || true
+    exit 1
+fi
+
+grep -q '"status":"ok"' "$TMP_DIR/health.json"
+grep -q '"service":"hashavatar-api"' "$TMP_DIR/health.json"
+
+curl -sSf -D "$TMP_DIR/svg.headers" \
+    "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&algorithm=sha512&kind=cat&background=themed&format=svg&size=256" \
+    -o "$TMP_DIR/avatar.svg"
+grep -q '^<svg ' "$TMP_DIR/avatar.svg"
+grep -qi '^content-type: image/svg+xml' "$TMP_DIR/svg.headers"
+grep -qi '^x-content-type-options: nosniff' "$TMP_DIR/svg.headers"
+
+curl -sSf -D "$TMP_DIR/png.headers" \
+    "http://127.0.0.1:$port/v1/avatar?id=robot@hashavatar.app&algorithm=blake3&kind=robot&background=white&format=png&size=128" \
+    -o "$TMP_DIR/avatar.png"
+grep -qi '^content-type: image/png' "$TMP_DIR/png.headers"
+test -s "$TMP_DIR/avatar.png"
+
+USER_LINE="$(podman run --rm --entrypoint /bin/sh "$IMAGE" -c id)"
+case "$USER_LINE" in
+    *"uid=$EXPECTED_UID"* )
+        ;;
+    * )
+        echo "podman smoke failed: expected runtime uid=$EXPECTED_UID, got: $USER_LINE" >&2
+        exit 1
+        ;;
+esac
+
+echo "podman smoke: ok"

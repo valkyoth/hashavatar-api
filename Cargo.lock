@@ -145,7 +145,7 @@ dependencies = [
  "http 0.2.12",
  "http 1.4.0",
  "http-body 1.0.1",
- "lru 0.16.4",
+ "lru",
  "percent-encoding",
  "regex-lite",
  "sha2 0.11.0",
@@ -979,9 +979,9 @@ dependencies = [
 
 [[package]]
 name = "hashavatar"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dc971012fbc308726b2c1b3da8bb1f9ce904a3fda0fb57c81094caeddc51276"
+checksum = "5485e40b7534a701fb10adefed46e68a4ebc5232b048d69b8abec2fbe6296061"
 dependencies = [
  "blake3",
  "image",
@@ -995,15 +995,15 @@ dependencies = [
 
 [[package]]
 name = "hashavatar-api"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "aws-config",
  "aws-sdk-s3",
  "axum",
+ "getrandom 0.4.2",
  "hashavatar",
  "image",
  "ipnet",
- "lru 0.18.0",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -1390,12 +1390,6 @@ checksum = "7f66e8d5d03f609abc3a39e6f08e4164ebf1447a732906d39eb9b99b7919ef39"
 dependencies = [
  "hashbrown 0.16.1",
 ]
-
-[[package]]
-name = "lru"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a860605968fce16869fd239cf4237a82f3ac470723415db603b0e8b6c8d4fb9"
 
 [[package]]
 name = "matchit"

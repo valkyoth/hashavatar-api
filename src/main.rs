@@ -1498,7 +1498,7 @@ fn kind_options_html(selected: AvatarKind) -> String {
                 r#"<option value="{value}" data-identity="{value}@hashavatar.app" data-supports-layers="{supports_layers}"{selected}>{label}</option>"#,
                 value = kind.as_str(),
                 label = avatar_kind_label(kind),
-                supports_layers = avatar_kind_supports_style_layers(kind),
+                supports_layers = kind.supports_face_layers(),
                 selected = selected_attr(kind == selected),
             )
         })
@@ -1584,20 +1584,6 @@ fn shape_options_html(selected: AvatarShape) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn avatar_kind_supports_style_layers(kind: AvatarKind) -> bool {
-    !matches!(
-        kind,
-        AvatarKind::Paws
-            | AvatarKind::Planet
-            | AvatarKind::Rocket
-            | AvatarKind::Mushroom
-            | AvatarKind::Cactus
-            | AvatarKind::Cupcake
-            | AvatarKind::Pizza
-            | AvatarKind::Icecream
-    )
 }
 
 fn format_options_html(selected: AvatarRequestFormat) -> String {
@@ -2972,7 +2958,7 @@ impl AvatarRequest {
     }
 
     fn effective_accessory(&self) -> AvatarAccessory {
-        if avatar_kind_supports_style_layers(self.kind) {
+        if self.kind.supports_face_layers() {
             self.accessory
         } else {
             DEFAULT_ACCESSORY
@@ -2980,7 +2966,7 @@ impl AvatarRequest {
     }
 
     fn effective_expression(&self) -> AvatarExpression {
-        if avatar_kind_supports_style_layers(self.kind) {
+        if self.kind.supports_face_layers() {
             self.expression
         } else {
             DEFAULT_EXPRESSION
@@ -3406,7 +3392,7 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_svg_with_hashavatar_0_10() {
+    fn build_avatar_asset_renders_svg_with_hashavatar_0_11() {
         let request = test_avatar_request(AvatarRequestFormat::Svg);
         let asset = build_avatar_asset(&request).expect("svg avatar should render");
         let body = std::str::from_utf8(&asset.body).expect("svg should be utf8");

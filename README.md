@@ -11,7 +11,7 @@ audit, SBOM, reproducibility, smoke, and GitHub CodeQL default setup checks.
 
 ## Current Status
 
-The current service version is `0.6.0`.
+The current service version is `0.7.0`.
 
 Implemented now:
 
@@ -23,8 +23,9 @@ Implemented now:
 - OpenAPI metadata at `/docs/openapi.json`.
 - Deterministic output for stable CDN-backed avatar URLs.
 - Namespace-aware tenant and style-version parameters.
+- Selectable identity hash algorithms: `SHA-512`, `BLAKE3`, and `XXH3`.
 - `WebP`, `PNG`, `JPEG`, `GIF`, and `SVG` responses.
-- Avatar families from `hashavatar 0.6.0`: `cat`, `dog`, `robot`, `fox`,
+- Avatar families from `hashavatar 0.7.0`: `cat`, `dog`, `robot`, `fox`,
   `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`,
   `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`,
   `pizza`, `icecream`, `octopus`, and `knight`.
@@ -54,7 +55,7 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Service license | `EUPL-1.2` |
-| Renderer crate | `hashavatar 0.6.0` |
+| Renderer crate | `hashavatar 0.7.0` |
 | MSRV | Rust `1.95.0` |
 | Runtime container | Wolfi |
 | HTTP framework | `axum` |
@@ -76,7 +77,7 @@ lives in [PROVENANCE.md](PROVENANCE.md). URL stability expectations live in
 ### Query Avatar
 
 ```text
-GET /v1/avatar?id=cat@hashavatar.app&kind=cat&background=themed&format=webp&size=256
+GET /v1/avatar?id=cat@hashavatar.app&algorithm=sha512&kind=cat&background=themed&format=webp&size=256
 ```
 
 Important query parameters:
@@ -86,6 +87,7 @@ Important query parameters:
 | `id` | `cat@hashavatar.app` | Public identity input for deterministic rendering. |
 | `tenant` | `public` | Namespace tenant for isolation. |
 | `style_version` | `v2` | Namespace style rollout version. |
+| `algorithm` | `sha512` | Identity hash algorithm: `sha512`, `blake3`, or `xxh3-128`. |
 | `kind` | `cat` | Avatar family. |
 | `background` | `themed` | Background mode. |
 | `format` | `webp` | `webp`, `png`, `jpg`, `jpeg`, `gif`, or `svg`. |
@@ -137,7 +139,7 @@ object-storage keys.
 Avatar responses are deterministic for the tuple:
 
 ```text
-tenant + style_version + id + kind + background + format + size
+tenant + style_version + algorithm + id + kind + background + format + size
 ```
 
 This makes aggressive edge caching appropriate. Avatar responses include:
@@ -152,6 +154,7 @@ The recommended production strategy is:
 - use a stable internal user id or one-way hash as `id`
 - use `tenant` for product or environment isolation
 - use `style_version` for visual rollouts
+- use `algorithm` when comparing the SHA-512, BLAKE3, and XXH3 identity modes from the renderer crate
 - change `style_version` intentionally when cached visuals should change
 
 ## Running Locally

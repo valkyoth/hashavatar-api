@@ -79,6 +79,13 @@ curl -sSf -D "$TMP_DIR/png.headers" \
 grep -qi '^content-type: image/png' "$TMP_DIR/png.headers"
 test -s "$TMP_DIR/avatar.png"
 
+for algorithm in sha512 blake3 xxh3-128; do
+    curl -sSf \
+        "http://127.0.0.1:$port/v1/avatar?id=wizard@hashavatar.app&algorithm=$algorithm&kind=wizard&background=white&format=svg&size=128" \
+        -o "$TMP_DIR/avatar-$algorithm.svg"
+    grep -q '^<svg ' "$TMP_DIR/avatar-$algorithm.svg"
+done
+
 bad_status="$(
     curl -sS -o "$TMP_DIR/bad-tenant.txt" -w '%{http_code}' \
         "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&tenant=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx&format=svg"

@@ -8,6 +8,7 @@ Within a major release line, the project aims to keep avatar output stable for t
 
 - `tenant`
 - `style_version`
+- `algorithm`
 - `id`
 - `kind`
 - `background`
@@ -21,6 +22,7 @@ That means an application can cache and embed avatar URLs without expecting sile
 Visual output may change when:
 
 - you intentionally change `style_version`
+- you intentionally change `algorithm`
 - you intentionally change `tenant`
 - you adopt a new major crate release with documented breaking visual changes
 - a narrowly scoped rendering bug fix is required and documented
@@ -29,6 +31,8 @@ Visual output may change when:
 
 - treat `tenant` as your product or environment namespace
 - treat `style_version` as your avatar rollout version, for example `v2`
+- treat `algorithm` as part of the avatar identity contract when comparing
+  SHA-512, BLAKE3, and XXH3 output modes
 - email-shaped identifiers are accepted, but stable internal ids or one-way
   hashes are preferred when you want less personal data in URL logs
 

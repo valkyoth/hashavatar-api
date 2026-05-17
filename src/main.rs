@@ -18,9 +18,10 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use hashavatar::{
-    AVATAR_STYLE_VERSION, AvatarBackground, AvatarKind, AvatarNamespace, AvatarOptions,
-    AvatarOutputFormat, AvatarSpec, encode_avatar_for_namespace, render_avatar_for_namespace,
-    render_avatar_svg_for_namespace,
+    AVATAR_STYLE_VERSION, AvatarBackground, AvatarHashAlgorithm, AvatarIdentityOptions, AvatarKind,
+    AvatarNamespace, AvatarOptions, AvatarOutputFormat, AvatarSpec,
+    encode_avatar_with_identity_options, render_avatar_for_namespace,
+    render_avatar_svg_with_identity_options,
 };
 use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use ipnet::IpNet;
@@ -37,6 +38,7 @@ const REPOSITORY_URL: &str = "https://github.com/valkyoth/hashavatar-api";
 const CRATE_URL: &str = "https://crates.io/crates/hashavatar/";
 const DEFAULT_NAMESPACE_TENANT: &str = "public";
 const DEFAULT_NAMESPACE_STYLE: &str = "v2";
+const DEFAULT_HASH_ALGORITHM: AvatarHashAlgorithm = AvatarHashAlgorithm::Sha512;
 const AVATAR_TIMEOUT_MS: u64 = 3_000;
 const STORAGE_TIMEOUT_MS: u64 = 5_000;
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
@@ -248,6 +250,7 @@ async fn openapi_json() -> impl IntoResponse {
                         {"name":"id","in":"query","schema":{"type":"string"}},
                         {"name":"tenant","in":"query","schema":{"type":"string"}},
                         {"name":"style_version","in":"query","schema":{"type":"string"}},
+                        {"name":"algorithm","in":"query","schema":{"type":"string","enum": AvatarHashAlgorithm::ALL.map(|algorithm| algorithm.as_str())}},
                         {"name":"kind","in":"query","schema":{"type":"string","enum": AvatarKind::ALL.map(|kind| kind.as_str())}},
                         {"name":"background","in":"query","schema":{"type":"string","enum": AvatarBackground::ALL.map(|background| background.as_str())}},
                         {"name":"format","in":"query","schema":{"type":"string","enum":["webp","png","jpg","gif","svg"]}},
@@ -679,6 +682,7 @@ async fn path_avatar(
         identity: path.identity,
         namespace_tenant: DEFAULT_NAMESPACE_TENANT.to_string(),
         namespace_style: DEFAULT_NAMESPACE_STYLE.to_string(),
+        algorithm: DEFAULT_HASH_ALGORITHM,
         kind,
         background: AvatarBackground::Themed,
         format,
@@ -832,10 +836,12 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
     let options = AvatarOptions::new(request.kind, request.background);
     let namespace = AvatarNamespace::new(&request.namespace_tenant, &request.namespace_style)
         .map_err(|error| error.to_string())?;
+    let identity_options = AvatarIdentityOptions::new(namespace, request.algorithm);
     let cache_key = format!(
-        "{}:{}:{}:{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}:{}:{}:{}",
         request.namespace_tenant,
         request.namespace_style,
+        request.algorithm,
         identity,
         request.kind,
         request.background,
@@ -845,9 +851,9 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
 
     let (body, content_type) = match request.format {
         AvatarRequestFormat::Webp => (
-            encode_avatar_for_namespace(
+            encode_avatar_with_identity_options(
                 spec,
-                namespace,
+                identity_options,
                 identity,
                 AvatarOutputFormat::WebP,
                 options,
@@ -856,9 +862,9 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
             "image/webp",
         ),
         AvatarRequestFormat::Png => (
-            encode_avatar_for_namespace(
+            encode_avatar_with_identity_options(
                 spec,
-                namespace,
+                identity_options,
                 identity,
                 AvatarOutputFormat::Png,
                 options,
@@ -867,9 +873,9 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
             "image/png",
         ),
         AvatarRequestFormat::Jpeg => (
-            encode_avatar_for_namespace(
+            encode_avatar_with_identity_options(
                 spec,
-                namespace,
+                identity_options,
                 identity,
                 AvatarOutputFormat::Jpeg,
                 options,
@@ -878,9 +884,9 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
             "image/jpeg",
         ),
         AvatarRequestFormat::Gif => (
-            encode_avatar_for_namespace(
+            encode_avatar_with_identity_options(
                 spec,
-                namespace,
+                identity_options,
                 identity,
                 AvatarOutputFormat::Gif,
                 options,
@@ -889,7 +895,7 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
             "image/gif",
         ),
         AvatarRequestFormat::Svg => (
-            render_avatar_svg_for_namespace(spec, namespace, identity, options)
+            render_avatar_svg_with_identity_options(spec, identity_options, identity, options)
                 .map_err(|error| format!("avatar generation failed: {error}"))?
                 .into_bytes(),
             "image/svg+xml",
@@ -939,9 +945,10 @@ fn etag_for(cache_key: &str) -> String {
 fn object_key_for(request: &AvatarRequest, identity: &str) -> String {
     let digest = Sha256::digest(
         format!(
-            "{}:{}:{}:{}:{}:{}:{}",
+            "{}:{}:{}:{}:{}:{}:{}:{}",
             request.namespace_tenant,
             request.namespace_style,
+            request.algorithm,
             identity,
             request.kind,
             request.background,
@@ -955,9 +962,10 @@ fn object_key_for(request: &AvatarRequest, identity: &str) -> String {
         encoded.push_str(&format!("{byte:02x}"));
     }
     format!(
-        "{}/{}/{}/{}/{}/{}.{}",
+        "{}/{}/{}/{}/{}/{}/{}.{}",
         request.namespace_tenant,
         request.namespace_style,
+        request.algorithm.as_str(),
         request.kind.as_str(),
         request.background.as_str(),
         request.size,
@@ -1212,6 +1220,10 @@ fn selected_attr(selected: bool) -> &'static str {
     if selected { " selected" } else { "" }
 }
 
+fn checked_attr(checked: bool) -> &'static str {
+    if checked { " checked" } else { "" }
+}
+
 fn avatar_kind_label(kind: AvatarKind) -> &'static str {
     match kind {
         AvatarKind::Cat => "Cat",
@@ -1249,6 +1261,29 @@ fn background_label(background: AvatarBackground) -> &'static str {
         AvatarBackground::Light => "Light",
         AvatarBackground::Transparent => "Transparent",
     }
+}
+
+fn hash_algorithm_label(algorithm: AvatarHashAlgorithm) -> &'static str {
+    match algorithm {
+        AvatarHashAlgorithm::Sha512 => "SHA-512",
+        AvatarHashAlgorithm::Blake3 => "BLAKE3",
+        AvatarHashAlgorithm::Xxh3_128 => "XXH3",
+    }
+}
+
+fn hash_algorithm_options_html(selected: AvatarHashAlgorithm) -> String {
+    AvatarHashAlgorithm::ALL
+        .into_iter()
+        .map(|algorithm| {
+            format!(
+                r#"<label class="algorithm-option"><input type="radio" name="algorithm" value="{value}"{checked} /><span>{label}</span></label>"#,
+                value = algorithm.as_str(),
+                checked = checked_attr(algorithm == selected),
+                label = hash_algorithm_label(algorithm),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn kind_options_html(selected: AvatarKind) -> String {
@@ -1579,6 +1614,51 @@ fn render_index_html() -> String {
       box-shadow: 0 0 0 5px rgba(217, 122, 66, 0.12);
       transform: translateY(-1px);
     }}
+    .algorithm-options {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }}
+    .algorithm-option {{
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 48px;
+      padding: 12px 14px;
+      border: 1px solid rgba(82, 96, 109, 0.18);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.95);
+      cursor: pointer;
+      transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+    }}
+    .algorithm-option:hover,
+    .algorithm-option:has(input:checked) {{
+      border-color: rgba(217, 122, 66, 0.65);
+      box-shadow: 0 10px 22px rgba(201, 104, 49, 0.12);
+      transform: translateY(-1px);
+    }}
+    .algorithm-option input {{
+      width: 16px;
+      height: 16px;
+      min-width: 16px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      transform: none;
+      accent-color: var(--accent);
+    }}
+    .algorithm-option input:focus {{
+      box-shadow: none;
+      transform: none;
+    }}
+    .algorithm-option span {{
+      font-weight: 800;
+      color: var(--ink);
+      white-space: nowrap;
+    }}
     .actions {{
       display: flex;
       flex-wrap: wrap;
@@ -1730,6 +1810,7 @@ fn render_index_html() -> String {
       .hero {{ grid-template-columns: 1fr; }}
       .copy {{ border-right: 0; border-bottom: 1px solid var(--line); }}
       .field-grid {{ grid-template-columns: 1fr; }}
+      .algorithm-options {{ grid-template-columns: 1fr; }}
       .example-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
     }}
     @media (max-width: 560px) {{
@@ -1763,6 +1844,15 @@ fn render_index_html() -> String {
         </p>
 
         <div class="generator">
+          <div class="field-grid full">
+            <div>
+              <label>Hash Algorithm</label>
+              <div class="algorithm-options">
+                {algorithm_options}
+              </div>
+            </div>
+          </div>
+
           <div class="field-grid full">
             <div>
               <label for="identity">Identity</label>
@@ -1818,8 +1908,8 @@ fn render_index_html() -> String {
           <div class="actions">
             <button id="copy-button" type="button">Copy URL</button>
             <button id="copy-signed-button" type="button" class="secondary">Copy Signed Link</button>
-            <a id="download-button" class="button-link" href="/v1/avatar?id={id}&kind=cat&background=themed&format=webp&size=256" download="hashavatar.webp">Download</a>
-            <a id="open-button" class="button-link secondary" href="/v1/avatar?id={id}&kind=cat&background=themed&format=webp&size=256" target="_blank" rel="noreferrer">Open Raw</a>
+            <a id="download-button" class="button-link" href="/v1/avatar?id={id}&algorithm=sha512&kind=cat&background=themed&format=webp&size=256" download="hashavatar.webp">Download</a>
+            <a id="open-button" class="button-link secondary" href="/v1/avatar?id={id}&algorithm=sha512&kind=cat&background=themed&format=webp&size=256" target="_blank" rel="noreferrer">Open Raw</a>
           </div>
 
           <div class="url-panel">
@@ -1841,7 +1931,7 @@ fn render_index_html() -> String {
 
       <div class="preview">
         <div class="panel">
-          <img id="avatar-preview" src="/v1/avatar?id={id}&kind=cat&background=themed&format=webp&size=256" alt="Generated avatar preview" />
+          <img id="avatar-preview" src="/v1/avatar?id={id}&algorithm=sha512&kind=cat&background=themed&format=webp&size=256" alt="Generated avatar preview" />
         </div>
         <div class="preview-meta">
           <div><strong>API:</strong> <span id="api-mode">/v1/avatar</span></div>
@@ -1868,6 +1958,7 @@ fn render_index_html() -> String {
   </main>
   <script>
     const identityEl = document.getElementById("identity");
+    const algorithmEls = Array.from(document.querySelectorAll("input[name='algorithm']"));
     const tenantEl = document.getElementById("tenant");
     const styleVersionEl = document.getElementById("style-version");
     const kindEl = document.getElementById("kind");
@@ -1896,6 +1987,11 @@ fn render_index_html() -> String {
       return identityEl.value.trim() || "{id}";
     }}
 
+    function currentAlgorithm() {{
+      const selected = algorithmEls.find((el) => el.checked);
+      return selected ? selected.value : "sha512";
+    }}
+
     function selectedPresetIdentity() {{
       return presetIdentities.get(kindEl.value) || "{id}";
     }}
@@ -1914,6 +2010,7 @@ fn render_index_html() -> String {
         id: currentIdentity(),
         tenant: tenantEl.value.trim() || "{tenant}",
         style_version: styleVersionEl.value.trim() || "{style_version}",
+        algorithm: currentAlgorithm(),
         kind: kindEl.value,
         background: backgroundEl.value,
         format: formatEl.value,
@@ -1927,6 +2024,7 @@ fn render_index_html() -> String {
         id: currentIdentity(),
         tenant: tenantEl.value.trim() || "{tenant}",
         style_version: styleVersionEl.value.trim() || "{style_version}",
+        algorithm: currentAlgorithm(),
         kind: kindEl.value,
         background: backgroundEl.value,
         format: formatEl.value,
@@ -1953,6 +2051,9 @@ fn render_index_html() -> String {
       const url = currentUrl();
       const previewQuery = new URLSearchParams({{
         id: currentIdentity(),
+        tenant: tenantEl.value.trim() || "{tenant}",
+        style_version: styleVersionEl.value.trim() || "{style_version}",
+        algorithm: currentAlgorithm(),
         kind: kindEl.value,
         background: backgroundEl.value,
         format: formatEl.value === "svg" ? "svg" : "webp",
@@ -1995,6 +2096,9 @@ fn render_index_html() -> String {
 
         const query = new URLSearchParams({{
           id: preset.id,
+          tenant: tenantEl.value.trim() || "{tenant}",
+          style_version: styleVersionEl.value.trim() || "{style_version}",
+          algorithm: currentAlgorithm(),
           kind: preset.kind,
           background: exampleBackground,
           format: "webp",
@@ -2033,6 +2137,12 @@ fn render_index_html() -> String {
       el.addEventListener("input", refresh);
       el.addEventListener("change", refresh);
     }});
+    algorithmEls.forEach((el) => {{
+      el.addEventListener("change", () => {{
+        renderPresetPage();
+        refresh();
+      }});
+    }});
 
     backgroundEl.addEventListener("change", renderPresetPage);
 
@@ -2062,6 +2172,7 @@ fn render_index_html() -> String {
         id = DEFAULT_ID,
         tenant = DEFAULT_NAMESPACE_TENANT,
         style_version = DEFAULT_NAMESPACE_STYLE,
+        algorithm_options = hash_algorithm_options_html(DEFAULT_HASH_ALGORITHM),
         kind_options = kind_options_html(AvatarKind::Cat),
         background_options = background_options_html(AvatarBackground::Themed),
         format_options = format_options_html(AvatarRequestFormat::Webp),
@@ -2088,7 +2199,7 @@ fn render_help_html() -> String {
   <section class="card">
     <h2>Basic URL</h2>
     <p>Use the query endpoint when you want a simple public image URL.</p>
-    <pre><code>https://{site}/v1/avatar?id=robot@hashavatar.app&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+    <pre><code>https://{site}/v1/avatar?id=robot@hashavatar.app&amp;algorithm=sha512&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
     <h2>Path Style URL</h2>
@@ -2098,7 +2209,7 @@ fn render_help_html() -> String {
   <section class="card">
     <h2>HTML Example</h2>
     <pre><code>&lt;img
-  src="https://{site}/v1/avatar?id=monster@hashavatar.app&amp;kind=monster&amp;background=themed&amp;format=webp&amp;size=256"
+  src="https://{site}/v1/avatar?id=monster@hashavatar.app&amp;algorithm=blake3&amp;kind=monster&amp;background=themed&amp;format=webp&amp;size=256"
   alt="Generated monster avatar"
 /&gt;</code></pre>
   </section>
@@ -2107,6 +2218,7 @@ fn render_help_html() -> String {
     <pre><code>const avatarUrl = new URL("https://{site}/v1/avatar");
 avatarUrl.search = new URLSearchParams({{
   id: user.email,
+  algorithm: "sha512",
   kind: "robot",
   background: "white",
   format: "webp",
@@ -2120,6 +2232,7 @@ avatarUrl.search = new URLSearchParams({{
     <li><code>id</code>: any stable identifier such as an email, username, internal user id, or one-way hash</li>
     <li><code>tenant</code>: optional namespace partition for multi-tenant apps</li>
     <li><code>style_version</code>: optional style namespace such as <code>v2</code></li>
+    <li><code>algorithm</code>: identity hash mode, one of <code>sha512</code>, <code>blake3</code>, or <code>xxh3-128</code></li>
     <li><code>kind</code>: any public hashavatar family, including <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>planet</code>, <code>rocket</code>, <code>frog</code>, <code>panda</code>, <code>cupcake</code>, <code>pizza</code>, <code>octopus</code>, and <code>knight</code></li>
     <li><code>background</code>: <code>themed</code>, <code>white</code>, <code>black</code>, <code>dark</code>, <code>light</code>, or <code>transparent</code></li>
     <li><code>format</code>: <code>webp</code>, <code>png</code>, <code>jpg</code>, <code>gif</code>, or <code>svg</code></li>
@@ -2129,7 +2242,7 @@ avatarUrl.search = new URLSearchParams({{
 <section class="card">
   <h2>Signed Storage Links</h2>
   <p>If this deployment has object storage configured, request a presigned storage link from <code>/v1/avatar/link</code>. That endpoint stores the generated object and returns JSON with the signed URL and object key.</p>
-  <pre><code>GET https://{site}/v1/avatar/link?id=robot@hashavatar.app&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+  <pre><code>GET https://{site}/v1/avatar/link?id=robot@hashavatar.app&amp;algorithm=sha512&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
 </section>
 <section class="card">
   <h2>Open Source</h2>
@@ -2149,7 +2262,7 @@ fn render_docs_html() -> String {
         "Reference documentation for the hashavatar.app public avatar API, storage link endpoint, metrics, and namespace-aware identity contract.",
         "/docs",
         "API Reference",
-        "This is the product-facing reference for the public API. The same identity, tenant, style version, kind, background, size, and format are intended to remain stable within a major release.",
+        "This is the product-facing reference for the public API. The same identity, tenant, style version, hash algorithm, kind, background, size, and format are intended to remain stable within a major release.",
         &format!(
             r#"
 <section class="card">
@@ -2166,7 +2279,7 @@ fn render_docs_html() -> String {
   <section class="card">
     <h2>Namespace Support</h2>
     <p>Use <code>tenant</code> and <code>style_version</code> to keep visual identity spaces separate between products or rollout phases.</p>
-    <pre><code>GET https://{site}/v1/avatar?id=wizard@hashavatar.app&amp;tenant=acme&amp;style_version=v2&amp;kind=wizard&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+    <pre><code>GET https://{site}/v1/avatar?id=wizard@hashavatar.app&amp;tenant=acme&amp;style_version=v2&amp;algorithm=xxh3-128&amp;kind=wizard&amp;background=white&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
     <h2>Anonymous IDs</h2>
@@ -2258,7 +2371,7 @@ fn render_privacy_html() -> String {
 </section>
 <section class="card">
   <h2>What To Avoid Sending</h2>
-  <p>Raw email addresses are rejected. Do not send personal data as the <code>id</code> value; send an internal stable id or a one-way application hash instead.</p>
+  <p>Email-shaped identifiers are accepted for compatibility, but URLs can appear in infrastructure logs. Send an internal stable id or a one-way application hash when you want to avoid putting personal data in the request URL.</p>
 </section>
 <section class="card">
   <h2>Repository And Crate</h2>
@@ -2282,6 +2395,7 @@ struct AvatarQuery {
     kind: Option<String>,
     background: Option<String>,
     format: Option<String>,
+    algorithm: Option<String>,
     size: Option<u32>,
     tenant: Option<String>,
     style_version: Option<String>,
@@ -2343,6 +2457,7 @@ struct AvatarRequest {
     identity: String,
     namespace_tenant: String,
     namespace_style: String,
+    algorithm: AvatarHashAlgorithm,
     kind: AvatarKind,
     background: AvatarBackground,
     format: AvatarRequestFormat,
@@ -2353,6 +2468,13 @@ struct AvatarRequest {
 
 impl AvatarRequest {
     fn from_query(query: AvatarQuery) -> Result<Self, String> {
+        let algorithm = match query.algorithm.as_deref().map(str::trim) {
+            Some(raw) if !raw.is_empty() => {
+                AvatarHashAlgorithm::from_str(raw).map_err(|error| error.to_string())?
+            }
+            _ => DEFAULT_HASH_ALGORITHM,
+        };
+
         let request = Self {
             identity: query
                 .id
@@ -2368,6 +2490,7 @@ impl AvatarRequest {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| DEFAULT_NAMESPACE_STYLE.to_string()),
+            algorithm,
             kind: query
                 .kind
                 .as_deref()
@@ -2543,6 +2666,7 @@ mod tests {
             identity: DEFAULT_ID.to_string(),
             namespace_tenant: DEFAULT_NAMESPACE_TENANT.to_string(),
             namespace_style: DEFAULT_NAMESPACE_STYLE.to_string(),
+            algorithm: DEFAULT_HASH_ALGORITHM,
             kind: AvatarKind::Cat,
             background: AvatarBackground::Themed,
             format,
@@ -2663,13 +2787,29 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_svg_with_hashavatar_0_6() {
+    fn build_avatar_asset_renders_svg_with_hashavatar_0_7() {
         let request = test_avatar_request(AvatarRequestFormat::Svg);
         let asset = build_avatar_asset(&request).expect("svg avatar should render");
         let body = std::str::from_utf8(&asset.body).expect("svg should be utf8");
 
         assert_eq!(asset.content_type, "image/svg+xml");
         assert!(body.starts_with("<svg "));
+    }
+
+    #[test]
+    fn build_avatar_asset_supports_all_hash_algorithms() {
+        let mut object_keys = std::collections::BTreeSet::new();
+
+        for algorithm in AvatarHashAlgorithm::ALL {
+            let mut request = test_avatar_request(AvatarRequestFormat::Svg);
+            request.algorithm = algorithm;
+
+            let asset = build_avatar_asset(&request).expect("algorithm should render");
+
+            assert_eq!(asset.content_type, "image/svg+xml");
+            assert!(asset.object_key.contains(algorithm.as_str()));
+            assert!(object_keys.insert(asset.object_key));
+        }
     }
 
     #[test]

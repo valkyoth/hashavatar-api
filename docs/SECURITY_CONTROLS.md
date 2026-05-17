@@ -13,6 +13,7 @@ local test and release gates.
 | Browser-side content confusion | Responses receive CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy` headers. |
 | S3 prefix escaping | Tenant and style-version namespaces are limited to ASCII letters, digits, hyphens, and underscores before object keys are built. |
 | Oversized avatar namespace or identity input | The service caps identities at 512 bytes and namespace components at 64 bytes before rendering. |
+| Cross-algorithm cache collision | Cache keys and object keys include the selected identity hash algorithm. |
 | PII in infrastructure logs | Email-shaped identities are accepted for compatibility; callers who want less personal data in URL logs should send opaque stable ids or one-way hashes. |
 | Vulnerable or incompatible dependencies | `cargo audit` and `cargo deny check` run in the standard check script and CI. |
 

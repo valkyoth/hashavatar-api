@@ -76,14 +76,14 @@ lives in [PROVENANCE.md](PROVENANCE.md). URL stability expectations live in
 ### Query Avatar
 
 ```text
-GET /v1/avatar?id=demo-cat&kind=cat&background=themed&format=webp&size=256
+GET /v1/avatar?id=cat@hashavatar.app&kind=cat&background=themed&format=webp&size=256
 ```
 
 Important query parameters:
 
 | Parameter | Default | Notes |
 | --- | --- | --- |
-| `id` | `demo-cat` | Public identity input for deterministic rendering. |
+| `id` | `cat@hashavatar.app` | Public identity input for deterministic rendering. |
 | `tenant` | `public` | Namespace tenant for isolation. |
 | `style_version` | `v2` | Namespace style rollout version. |
 | `kind` | `cat` | Avatar family. |
@@ -95,8 +95,8 @@ Important query parameters:
 ### Path Avatar
 
 ```text
-GET /avatar/cat/demo-cat/svg
-GET /avatar/fox/demo-fox/png
+GET /avatar/cat/cat@hashavatar.app/svg
+GET /avatar/fox/fox@hashavatar.app/png
 ```
 
 Path requests use the default tenant, style version, themed background, and
@@ -105,7 +105,7 @@ Path requests use the default tenant, style version, themed background, and
 ### Signed Storage Link
 
 ```text
-GET /v1/avatar/link?id=demo-robot&kind=robot&background=white&format=webp&size=256
+GET /v1/avatar/link?id=robot@hashavatar.app&kind=robot&background=white&format=webp&size=256
 ```
 
 This endpoint requires object storage configuration. It renders and stores the
@@ -125,10 +125,12 @@ avatar when needed, then returns object metadata and a signed URL.
 | Avatar render timeout | `3s` |
 | Storage operation timeout | `5s` |
 
-The service rejects raw email-shaped identities and validates its own public
-size, identity, and namespace ranges before calling the renderer. Namespace
-components may contain only ASCII letters, digits, hyphens, and underscores so
-they are safe to use in object-storage keys.
+The service accepts email-shaped identifiers for compatibility, but stable
+internal ids or one-way hashes are preferred when you want less personal data
+in URL logs. It validates its own public size, identity, and namespace ranges
+before calling the renderer. Namespace components may contain only ASCII
+letters, digits, hyphens, and underscores so they are safe to use in
+object-storage keys.
 
 ## Determinism And Caching
 

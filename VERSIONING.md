@@ -29,8 +29,8 @@ Visual output may change when:
 
 - treat `tenant` as your product or environment namespace
 - treat `style_version` as your avatar rollout version, for example `v2`
-- do not send raw user emails; the API rejects email-shaped identifiers
-- prefer stable internal ids or a one-way hash as the public avatar id
+- email-shaped identifiers are accepted, but stable internal ids or one-way
+  hashes are preferred when you want less personal data in URL logs
 
 ## Regression Protection
 

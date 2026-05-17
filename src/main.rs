@@ -30,7 +30,7 @@ use sha2::{Digest, Sha256};
 const DEFAULT_HOST: &str = "0.0.0.0";
 const DEFAULT_PORT: u16 = 8080;
 const TRUSTED_PROXIES_ENV: &str = "HASHAVATAR_TRUSTED_PROXIES";
-const DEFAULT_ID: &str = "demo-cat";
+const DEFAULT_ID: &str = "cat@hashavatar.app";
 const SITE_NAME: &str = "hashavatar.app";
 const SITE_URL: &str = "https://hashavatar.app";
 const REPOSITORY_URL: &str = "https://github.com/valkyoth/hashavatar-api";
@@ -975,12 +975,6 @@ fn validate_identity(identity: &str) -> Result<(), String> {
             "identity must be at most {MAX_ID_BYTES} bytes; send a stable internal id or one-way hash"
         ));
     }
-    if identity.contains('@') {
-        return Err(
-            "identity must not contain raw email addresses; send a stable internal id or one-way hash"
-                .to_string(),
-        );
-    }
     Ok(())
 }
 
@@ -1262,7 +1256,7 @@ fn kind_options_html(selected: AvatarKind) -> String {
         .into_iter()
         .map(|kind| {
             format!(
-                r#"<option value="{value}" data-identity="demo-{value}"{selected}>{label}</option>"#,
+                r#"<option value="{value}" data-identity="{value}@hashavatar.app"{selected}>{label}</option>"#,
                 value = kind.as_str(),
                 label = avatar_kind_label(kind),
                 selected = selected_attr(kind == selected),
@@ -1324,7 +1318,7 @@ fn preset_examples() -> Vec<PresetExample> {
         .map(|kind| PresetExample {
             label: avatar_kind_label(kind),
             id: match kind {
-                AvatarKind::Icecream => "demo-icecream",
+                AvatarKind::Icecream => "icecream@hashavatar.app",
                 _ => kind.as_str(),
             },
             kind: kind.as_str(),
@@ -1343,29 +1337,29 @@ fn preset_examples() -> Vec<PresetExample> {
         })
         .map(|mut preset| {
             preset.id = match preset.kind {
-                "cat" => "demo-cat",
-                "dog" => "demo-dog",
-                "robot" => "demo-robot",
-                "fox" => "demo-fox",
-                "alien" => "demo-alien",
-                "monster" => "demo-monster",
-                "ghost" => "demo-ghost",
-                "slime" => "demo-slime",
-                "bird" => "demo-bird",
-                "wizard" => "demo-wizard",
-                "skull" => "demo-skull",
-                "paws" => "demo-paws",
-                "planet" => "demo-planet",
-                "rocket" => "demo-rocket",
-                "mushroom" => "demo-mushroom",
-                "cactus" => "demo-cactus",
-                "frog" => "demo-frog",
-                "panda" => "demo-panda",
-                "cupcake" => "demo-cupcake",
-                "pizza" => "demo-pizza",
-                "icecream" => "demo-icecream",
-                "octopus" => "demo-octopus",
-                "knight" => "demo-knight",
+                "cat" => "cat@hashavatar.app",
+                "dog" => "dog@hashavatar.app",
+                "robot" => "robot@hashavatar.app",
+                "fox" => "fox@hashavatar.app",
+                "alien" => "alien@hashavatar.app",
+                "monster" => "monster@hashavatar.app",
+                "ghost" => "ghost@hashavatar.app",
+                "slime" => "slime@hashavatar.app",
+                "bird" => "bird@hashavatar.app",
+                "wizard" => "wizard@hashavatar.app",
+                "skull" => "skull@hashavatar.app",
+                "paws" => "paws@hashavatar.app",
+                "planet" => "planet@hashavatar.app",
+                "rocket" => "rocket@hashavatar.app",
+                "mushroom" => "mushroom@hashavatar.app",
+                "cactus" => "cactus@hashavatar.app",
+                "frog" => "frog@hashavatar.app",
+                "panda" => "panda@hashavatar.app",
+                "cupcake" => "cupcake@hashavatar.app",
+                "pizza" => "pizza@hashavatar.app",
+                "icecream" => "icecream@hashavatar.app",
+                "octopus" => "octopus@hashavatar.app",
+                "knight" => "knight@hashavatar.app",
                 _ => DEFAULT_ID,
             };
             preset
@@ -1765,14 +1759,14 @@ fn render_index_html() -> String {
           Choose the style, background, output format, and size, then copy the URL, download the result, or create a signed object-storage link.
         </p>
         <p>
-          Privacy-conscious integration tip: raw email addresses are rejected. Hash or namespace your internal ids client-side and use <code>tenant</code> plus <code>style_version</code> for separation.
+          Privacy-conscious integration tip: email-shaped identifiers are accepted for convenience, but a stable internal id or one-way hash is better when you want less personal data in URL logs.
         </p>
 
         <div class="generator">
           <div class="field-grid full">
             <div>
               <label for="identity">Identity</label>
-              <input id="identity" type="text" value="{id}" placeholder="demo-cat" spellcheck="false" autocomplete="off" />
+              <input id="identity" type="text" value="{id}" placeholder="cat@hashavatar.app" spellcheck="false" autocomplete="off" />
             </div>
           </div>
 
@@ -2094,17 +2088,17 @@ fn render_help_html() -> String {
   <section class="card">
     <h2>Basic URL</h2>
     <p>Use the query endpoint when you want a simple public image URL.</p>
-    <pre><code>https://{site}/v1/avatar?id=demo-robot&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+    <pre><code>https://{site}/v1/avatar?id=robot@hashavatar.app&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
     <h2>Path Style URL</h2>
     <p>Use the path form if you prefer cleaner embed URLs.</p>
-    <pre><code>https://{site}/avatar/fox/demo-fox/svg</code></pre>
+    <pre><code>https://{site}/avatar/fox/fox@hashavatar.app/svg</code></pre>
   </section>
   <section class="card">
     <h2>HTML Example</h2>
     <pre><code>&lt;img
-  src="https://{site}/v1/avatar?id=demo-monster&amp;kind=monster&amp;background=themed&amp;format=webp&amp;size=256"
+  src="https://{site}/v1/avatar?id=monster@hashavatar.app&amp;kind=monster&amp;background=themed&amp;format=webp&amp;size=256"
   alt="Generated monster avatar"
 /&gt;</code></pre>
   </section>
@@ -2112,7 +2106,7 @@ fn render_help_html() -> String {
     <h2>JavaScript Example</h2>
     <pre><code>const avatarUrl = new URL("https://{site}/v1/avatar");
 avatarUrl.search = new URLSearchParams({{
-  id: user.publicAvatarId,
+  id: user.email,
   kind: "robot",
   background: "white",
   format: "webp",
@@ -2123,7 +2117,7 @@ avatarUrl.search = new URLSearchParams({{
 <section class="card">
   <h2>Supported Parameters</h2>
   <ul>
-    <li><code>id</code>: an opaque stable identifier such as an internal user id, username, or one-way hash; raw email addresses are rejected</li>
+    <li><code>id</code>: any stable identifier such as an email, username, internal user id, or one-way hash</li>
     <li><code>tenant</code>: optional namespace partition for multi-tenant apps</li>
     <li><code>style_version</code>: optional style namespace such as <code>v2</code></li>
     <li><code>kind</code>: any public hashavatar family, including <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>planet</code>, <code>rocket</code>, <code>frog</code>, <code>panda</code>, <code>cupcake</code>, <code>pizza</code>, <code>octopus</code>, and <code>knight</code></li>
@@ -2135,7 +2129,7 @@ avatarUrl.search = new URLSearchParams({{
 <section class="card">
   <h2>Signed Storage Links</h2>
   <p>If this deployment has object storage configured, request a presigned storage link from <code>/v1/avatar/link</code>. That endpoint stores the generated object and returns JSON with the signed URL and object key.</p>
-  <pre><code>GET https://{site}/v1/avatar/link?id=demo-robot&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+  <pre><code>GET https://{site}/v1/avatar/link?id=robot@hashavatar.app&amp;kind=robot&amp;background=white&amp;format=webp&amp;size=256</code></pre>
 </section>
 <section class="card">
   <h2>Open Source</h2>
@@ -2172,7 +2166,7 @@ fn render_docs_html() -> String {
   <section class="card">
     <h2>Namespace Support</h2>
     <p>Use <code>tenant</code> and <code>style_version</code> to keep visual identity spaces separate between products or rollout phases.</p>
-    <pre><code>GET https://{site}/v1/avatar?id=demo-wizard&amp;tenant=acme&amp;style_version=v2&amp;kind=wizard&amp;background=white&amp;format=webp&amp;size=256</code></pre>
+    <pre><code>GET https://{site}/v1/avatar?id=wizard@hashavatar.app&amp;tenant=acme&amp;style_version=v2&amp;kind=wizard&amp;background=white&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
     <h2>Anonymous IDs</h2>
@@ -2718,16 +2712,13 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_rejects_raw_email_identity() {
+    fn build_avatar_asset_allows_email_identity() {
         let mut request = test_avatar_request(AvatarRequestFormat::Svg);
         request.identity = "person@example.com".to_string();
 
-        let error = match build_avatar_asset(&request) {
-            Ok(_) => panic!("raw email identity should be rejected"),
-            Err(error) => error,
-        };
+        let asset = build_avatar_asset(&request).expect("email-shaped identity should render");
 
-        assert!(error.contains("raw email addresses"));
+        assert_eq!(asset.content_type, "image/svg+xml");
     }
 
     #[test]

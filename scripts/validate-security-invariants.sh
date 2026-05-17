@@ -26,8 +26,6 @@ grep -q 'MAX_NAMESPACE_COMPONENT_BYTES' src/main.rs \
     || fail "namespace component byte limit is missing"
 grep -q 'fn is_valid_namespace_component' src/main.rs \
     || fail "path-safe namespace validation is missing"
-grep -q 'identity.contains' src/main.rs \
-    || fail "raw email-shaped identity rejection is missing"
 
 internal_error_body="$(
     awk '

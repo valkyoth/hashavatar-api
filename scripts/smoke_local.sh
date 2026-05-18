@@ -78,10 +78,22 @@ grep -qi '^referrer-policy: no-referrer' "$TMP_DIR/webp.headers"
 grep -qi '^cross-origin-resource-policy: cross-origin' "$TMP_DIR/webp.headers"
 grep -qi '^content-security-policy:' "$TMP_DIR/webp.headers"
 
+curl -sSf -D "$TMP_DIR/og.headers" \
+    "http://127.0.0.1:$port/og.png?id=cat@hashavatar.app&kind=cat" \
+    -o "$TMP_DIR/og.png"
+test -s "$TMP_DIR/og.png"
+grep -qi '^content-type: image/png' "$TMP_DIR/og.headers"
+grep -qi '^content-security-policy:' "$TMP_DIR/og.headers"
+
 curl -sSf \
     "http://127.0.0.1:$port/v1/avatar?id=planet@hashavatar.app&algorithm=sha512&kind=planet&background=themed&accessory=glasses&color=gold&expression=happy&shape=circle&format=webp&size=256" \
     -o "$TMP_DIR/unsupported-accessory.webp"
 grep -q '^RIFF' "$TMP_DIR/unsupported-accessory.webp"
+
+curl -sSf \
+    "http://127.0.0.1:$port/v1/avatar?id=wizard@hashavatar.app&algorithm=sha512&kind=wizard&background=starry&color=deep-sea-blue&expression=cool&shape=squircle&format=webp&size=256" \
+    -o "$TMP_DIR/starry-background.webp"
+grep -q '^RIFF' "$TMP_DIR/starry-background.webp"
 
 bad_format_status="$(
     curl -sS -o "$TMP_DIR/bad-format.txt" -w '%{http_code}' \

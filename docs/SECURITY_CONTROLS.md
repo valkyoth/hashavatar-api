@@ -7,11 +7,12 @@ local test and release gates.
 
 | Risk | Control |
 | --- | --- |
-| Unbounded or expensive rate-limit state | The rate limiter uses bounded `LruCache` storage for O(1) LRU updates and has regression tests for unique attacker keys. |
+| Unbounded or expensive rate-limit state | The rate limiter uses bounded `LruCache` storage for O(1) LRU updates, 65,536 buckets, and regression tests for unique attacker keys. Avatar generation routes, including `/og.png`, pass through origin-side rate limits. |
 | Forwarded-header spoofing | `X-Forwarded-For`, `X-Real-IP`, and `CF-Connecting-IP` are honored only when the direct peer is a configured trusted proxy; `X-Forwarded-For` chains are resolved from the rightmost untrusted address. |
 | Verbose internal errors | Internal errors are logged with `tracing`; clients receive a generic static 500 body. |
 | Browser-side content confusion | Responses receive CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Resource-Policy`, and HTML-only `Cross-Origin-Opener-Policy` and `Strict-Transport-Security` headers. |
 | Operational intelligence disclosure | `/metrics` is loopback-only and returns `404` to non-local peers; `/healthz` remains public for load balancers and uptime checks but only returns liveness status. |
+| Object-storage metadata disclosure | Standard avatar responses do not expose presigned URLs or object keys in headers. `/v1/avatar/link` is the explicit JSON endpoint for signed-link metadata. |
 | S3 prefix escaping | Tenant and style-version namespaces are limited to ASCII letters, digits, hyphens, and underscores before object keys are built. |
 | Oversized avatar namespace or identity input | The service caps identities at 512 bytes and namespace components at 64 bytes before rendering. |
 | Reflected error content | Client-facing `400` responses use static validation messages for parser and renderer errors instead of forwarding raw library error strings. |

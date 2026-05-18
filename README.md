@@ -11,7 +11,7 @@ audit, SBOM, reproducibility, smoke, and GitHub CodeQL default setup checks.
 
 ## Current Status
 
-The current service version is `0.12.0`.
+The current service version is `0.13.0`.
 
 Implemented now:
 
@@ -25,13 +25,14 @@ Implemented now:
 - Namespace-aware tenant and style-version parameters.
 - SHA-512 identity hashing.
 - WebP avatar responses.
-- Avatar families from `hashavatar 0.12.0`: `cat`, `dog`, `robot`, `fox`,
+- Avatar families from `hashavatar 0.13.0`: `cat`, `dog`, `robot`, `fox`,
   `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`,
   `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`,
   `pizza`, `icecream`, `octopus`, `knight`, `bear`, `penguin`, `dragon`,
   `ninja`, `astronaut`, `diamond`, `coffee-cup`, and `shield`.
-- Background modes: `themed`, `white`, `black`, `dark`, `light`, and
-  `transparent`.
+- Background modes: `themed`, `white`, `black`, `dark`, `light`,
+  `transparent`, `polka-dot`, `striped`, `checkerboard`, `grid`, `sunrise`,
+  `ocean`, and `starry`.
 - Bounded in-memory rate limiter storage.
 - Trusted-proxy validation before forwarded IP headers are honored.
 - Generic internal error responses with detailed server-side tracing.
@@ -56,7 +57,7 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Service license | `EUPL-1.2` |
-| Renderer crate | `hashavatar 0.12.0` |
+| Renderer crate | `hashavatar 0.13.0` |
 | MSRV | Rust `1.95.0` |
 | Runtime container | Wolfi |
 | HTTP framework | `axum` |
@@ -90,7 +91,7 @@ Important query parameters:
 | `style_version` | `v2` | Namespace style rollout version. |
 | `algorithm` | `sha512` | Identity hash algorithm. Only `sha512` is supported. |
 | `kind` | `cat` | Avatar family. |
-| `background` | `themed` | Background mode. |
+| `background` | `themed` | Background mode: `themed`, `white`, `black`, `dark`, `light`, `transparent`, `polka-dot`, `striped`, `checkerboard`, `grid`, `sunrise`, `ocean`, or `starry`. |
 | `accessory` | `none` | Optional style layer: `none`, `glasses`, `hat`, `headphones`, `crown`, `bowtie`, `eyepatch`, `scarf`, `halo`, or `horns`. |
 | `color` | `default` | Accent color: `default`, `neon-mint`, `pastel-pink`, `crimson`, `gold`, or `deep-sea-blue`. |
 | `expression` | `default` | Facial expression: `default`, `happy`, `grumpy`, `surprised`, `sleepy`, `winking`, `cool`, or `crying`. |
@@ -116,7 +117,8 @@ GET /v1/avatar/link?id=robot@hashavatar.app&kind=robot&background=white&accessor
 ```
 
 This endpoint requires object storage configuration. It renders and stores the
-avatar when needed, then returns object metadata and a signed URL.
+avatar when needed, then returns object metadata and a signed URL. Standard
+avatar responses do not expose signed-link metadata in response headers.
 
 ## Limits
 

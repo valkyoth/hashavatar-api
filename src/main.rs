@@ -47,7 +47,7 @@ const DEFAULT_SHAPE: AvatarShape = AvatarShape::Square;
 const AVATAR_TIMEOUT_MS: u64 = 3_000;
 const STORAGE_TIMEOUT_MS: u64 = 5_000;
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
-const MAX_RATE_LIMIT_BUCKETS: usize = 16_384;
+const MAX_RATE_LIMIT_BUCKETS: usize = 65_536;
 const INTERNAL_ERROR_MESSAGE: &str = "An internal server error occurred.";
 const MIN_SIZE: u32 = 64;
 const MAX_SIZE: u32 = 1024;
@@ -163,12 +163,21 @@ fn content_security_policy(nonce: &CspNonce) -> String {
     )
 }
 
+fn static_content_security_policy() -> &'static str {
+    "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'"
+}
+
 async fn add_security_headers(mut request: Request, next: Next) -> Response {
-    let csp_nonce = match generate_csp_nonce() {
-        Ok(nonce) => nonce,
-        Err(error) => return secure_rng_failure(error),
+    let csp_nonce = if route_uses_inline_html(request.uri().path()) {
+        let nonce = match generate_csp_nonce() {
+            Ok(nonce) => nonce,
+            Err(error) => return secure_rng_failure(error),
+        };
+        request.extensions_mut().insert(nonce.clone());
+        Some(nonce)
+    } else {
+        None
     };
-    request.extensions_mut().insert(csp_nonce.clone());
 
     let mut response = next.run(request).await;
     let is_html_response = response
@@ -176,20 +185,24 @@ async fn add_security_headers(mut request: Request, next: Next) -> Response {
         .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|content_type| content_type.starts_with("text/html"));
-    let csp = content_security_policy(&csp_nonce);
+    let csp = csp_nonce
+        .as_ref()
+        .map(content_security_policy)
+        .unwrap_or_else(|| static_content_security_policy().to_string());
     apply_security_headers(response.headers_mut(), &csp, is_html_response);
 
     response
 }
 
+fn route_uses_inline_html(path: &str) -> bool {
+    matches!(path, "/" | "/help" | "/docs" | "/terms" | "/privacy")
+}
+
 fn apply_security_headers(headers: &mut HeaderMap, csp: &str, is_html_response: bool) {
     headers.insert(
         header::HeaderName::from_static("content-security-policy"),
-        HeaderValue::from_str(csp).unwrap_or_else(|_| {
-            HeaderValue::from_static(
-                "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'",
-            )
-        }),
+        HeaderValue::from_str(csp)
+            .unwrap_or_else(|_| HeaderValue::from_static(static_content_security_policy())),
     );
     headers.insert(
         header::HeaderName::from_static("permissions-policy"),
@@ -409,7 +422,18 @@ fn openapi_document() -> serde_json::Value {
     })
 }
 
-async fn og_png(Query(query): Query<OgQuery>) -> Response {
+async fn og_png(
+    State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(query): Query<OgQuery>,
+) -> Response {
+    if let Err(response) =
+        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::Avatar).await
+    {
+        return response;
+    }
+
     let title_id = query.id.unwrap_or_else(|| DEFAULT_ID.to_string());
     let tenant = query.tenant.as_deref().unwrap_or(DEFAULT_NAMESPACE_TENANT);
     let style_version = query
@@ -910,17 +934,6 @@ async fn serve_avatar(state: AppState, request: AvatarRequest) -> Response {
         .await
         {
             Ok(Ok(signed)) => {
-                headers.insert(
-                    HeaderName::storage_key(),
-                    HeaderValue::from_str(&signed.object_key)
-                        .unwrap_or_else(|_| HeaderValue::from_static("unavailable")),
-                );
-                headers.insert(
-                    HeaderName::signed_url(),
-                    HeaderValue::from_str(&signed.signed_url)
-                        .unwrap_or_else(|_| HeaderValue::from_static("unavailable")),
-                );
-
                 if request.redirect {
                     state
                         .metrics
@@ -1434,6 +1447,13 @@ fn background_label(background: AvatarBackground) -> &'static str {
         AvatarBackground::Dark => "Dark",
         AvatarBackground::Light => "Light",
         AvatarBackground::Transparent => "Transparent",
+        AvatarBackground::PolkaDot => "Polka Dot",
+        AvatarBackground::Striped => "Striped",
+        AvatarBackground::Checkerboard => "Checkerboard",
+        AvatarBackground::Grid => "Grid",
+        AvatarBackground::Sunrise => "Sunrise",
+        AvatarBackground::Ocean => "Ocean",
+        AvatarBackground::Starry => "Starry",
     }
 }
 
@@ -2566,7 +2586,7 @@ avatarUrl.search = new URLSearchParams({{
     <li><code>style_version</code>: optional style namespace such as <code>v2</code></li>
     <li><code>algorithm</code>: identity hash mode; only <code>sha512</code> is supported</li>
     <li><code>kind</code>: any public hashavatar family, including <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>planet</code>, <code>rocket</code>, <code>frog</code>, <code>panda</code>, <code>cupcake</code>, <code>pizza</code>, <code>octopus</code>, <code>knight</code>, <code>bear</code>, <code>penguin</code>, <code>dragon</code>, <code>ninja</code>, <code>astronaut</code>, <code>diamond</code>, <code>coffee-cup</code>, and <code>shield</code></li>
-    <li><code>background</code>: <code>themed</code>, <code>white</code>, <code>black</code>, <code>dark</code>, <code>light</code>, or <code>transparent</code></li>
+    <li><code>background</code>: <code>themed</code>, <code>white</code>, <code>black</code>, <code>dark</code>, <code>light</code>, <code>transparent</code>, <code>polka-dot</code>, <code>striped</code>, <code>checkerboard</code>, <code>grid</code>, <code>sunrise</code>, <code>ocean</code>, or <code>starry</code></li>
     <li><code>accessory</code>: <code>none</code>, <code>glasses</code>, <code>hat</code>, <code>headphones</code>, <code>crown</code>, <code>bowtie</code>, <code>eyepatch</code>, <code>scarf</code>, <code>halo</code>, or <code>horns</code></li>
     <li><code>color</code>: <code>default</code>, <code>neon-mint</code>, <code>pastel-pink</code>, <code>crimson</code>, <code>gold</code>, or <code>deep-sea-blue</code></li>
     <li><code>expression</code>: <code>default</code>, <code>happy</code>, <code>grumpy</code>, <code>surprised</code>, <code>sleepy</code>, <code>winking</code>, <code>cool</code>, or <code>crying</code></li>
@@ -2578,7 +2598,7 @@ avatarUrl.search = new URLSearchParams({{
 </section>
 <section class="card">
   <h2>Signed Storage Links</h2>
-  <p>If this deployment has object storage configured, request a presigned storage link from <code>/v1/avatar/link</code>. That endpoint stores the generated object and returns JSON with the signed URL and object key.</p>
+  <p>If this deployment has object storage configured, request a presigned storage link from <code>/v1/avatar/link</code>. That endpoint stores the generated object and returns JSON with the signed URL and object key. Standard avatar responses do not expose signed-link metadata in response headers.</p>
   <pre><code>GET https://{site}/v1/avatar/link?id=robot@hashavatar.app&amp;algorithm=sha512&amp;kind=robot&amp;background=white&amp;accessory=glasses&amp;color=gold&amp;expression=happy&amp;shape=circle&amp;format=webp&amp;size=256</code></pre>
 </section>
 <section class="card">
@@ -3028,14 +3048,6 @@ impl HeaderName {
     fn cloudflare_cache_control() -> axum::http::HeaderName {
         axum::http::HeaderName::from_static("cloudflare-cdn-cache-control")
     }
-
-    fn storage_key() -> axum::http::HeaderName {
-        axum::http::HeaderName::from_static("x-hashavatar-object-key")
-    }
-
-    fn signed_url() -> axum::http::HeaderName {
-        axum::http::HeaderName::from_static("x-hashavatar-signed-url")
-    }
 }
 
 #[cfg(test)]
@@ -3105,6 +3117,12 @@ mod tests {
         }
 
         assert_eq!(limiter.len().await, 32);
+    }
+
+    #[test]
+    fn rate_limiter_capacity_is_churn_resistant() {
+        let capacity = MAX_RATE_LIMIT_BUCKETS;
+        assert!(capacity >= 65_536);
     }
 
     #[test]
@@ -3194,6 +3212,16 @@ mod tests {
     }
 
     #[test]
+    fn non_html_routes_use_static_csp_without_nonce() {
+        assert!(route_uses_inline_html("/"));
+        assert!(route_uses_inline_html("/docs"));
+        assert!(!route_uses_inline_html("/v1/avatar"));
+        assert!(!route_uses_inline_html("/og.png"));
+        assert!(!static_content_security_policy().contains("nonce-"));
+        assert!(static_content_security_policy().contains("script-src 'self'"));
+    }
+
+    #[test]
     fn security_headers_include_modern_isolation_policy() {
         let mut html_response = Html("ok").into_response();
         apply_security_headers(
@@ -3239,6 +3267,22 @@ mod tests {
         );
         assert!(!image_headers.contains_key("cross-origin-opener-policy"));
         assert!(!image_headers.contains_key("strict-transport-security"));
+    }
+
+    #[test]
+    fn standard_avatar_response_does_not_emit_signed_storage_headers() {
+        let source = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"));
+        let serve_avatar_source = source
+            .split("async fn serve_avatar(")
+            .nth(1)
+            .and_then(|after_name| after_name.split("async fn serve_avatar_link(").next())
+            .expect("serve_avatar source should be present");
+
+        assert!(!serve_avatar_source.contains("HeaderName::storage_key()"));
+        assert!(!serve_avatar_source.contains("HeaderName::signed_url()"));
+        assert!(source.contains("async fn serve_avatar_link("));
+        assert!(source.contains("object_key: signed.object_key"));
+        assert!(source.contains("signed_url: signed.signed_url"));
     }
 
     #[test]
@@ -3294,6 +3338,20 @@ mod tests {
         assert!(html.contains(
             r#"value="coffee-cup" data-identity="coffee-cup@hashavatar.app" data-supports-layers="false""#
         ));
+        for background in [
+            "polka-dot",
+            "striped",
+            "checkerboard",
+            "grid",
+            "sunrise",
+            "ocean",
+            "starry",
+        ] {
+            assert!(
+                html.contains(&format!(r#"value="{background}""#)),
+                "missing background option {background}"
+            );
+        }
         assert!(html.contains("syncStyleLayerAvailability();"));
         assert!(html.contains("accessoryEl.disabled = !supportsLayers;"));
         assert!(html.contains("accessory: accessoryEl.value"));
@@ -3321,6 +3379,19 @@ mod tests {
         assert!(docs_html.contains("loopback-only"));
         assert!(docs_html.contains("returns <code>404</code> to non-local peers"));
         assert!(openapi["paths"].get("/metrics").is_none());
+    }
+
+    #[test]
+    fn og_png_handler_applies_avatar_rate_limits() {
+        let source = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"));
+        let handler = source
+            .split("async fn og_png(")
+            .nth(1)
+            .and_then(|after_name| after_name.split("async fn healthz(").next())
+            .expect("og_png handler should be present");
+
+        assert!(handler.contains("enforce_limits("));
+        assert!(handler.contains("RateLimitRoute::Avatar"));
     }
 
     #[test]
@@ -3446,12 +3517,23 @@ mod tests {
     #[tokio::test]
     async fn og_namespace_error_does_not_reflect_input() {
         let reflected = "public<script>alert(1)</script>";
-        let response = og_png(Query(OgQuery {
-            id: Some(DEFAULT_ID.to_string()),
-            tenant: Some(reflected.to_string()),
-            style_version: Some(DEFAULT_NAMESPACE_STYLE.to_string()),
-            kind: None,
-        }))
+        let state = AppState {
+            storage: None,
+            trusted_proxies: TrustedProxies::default(),
+            rate_limiter: RateLimiter::with_capacity(8),
+            metrics: Metrics::default(),
+        };
+        let response = og_png(
+            State(state),
+            ConnectInfo("127.0.0.1:8080".parse().expect("peer address")),
+            HeaderMap::new(),
+            Query(OgQuery {
+                id: Some(DEFAULT_ID.to_string()),
+                tenant: Some(reflected.to_string()),
+                style_version: Some(DEFAULT_NAMESPACE_STYLE.to_string()),
+                kind: None,
+            }),
+        )
         .await;
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
@@ -3493,7 +3575,7 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_webp_with_hashavatar_0_12() {
+    fn build_avatar_asset_renders_webp_with_hashavatar_0_13() {
         let request = test_avatar_request(AvatarRequestFormat::Webp);
         let asset = build_avatar_asset(&request).expect("webp avatar should render");
 

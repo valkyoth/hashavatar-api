@@ -2,7 +2,6 @@ use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -19,16 +18,16 @@ use axum::routing::get;
 use axum::{Json, Router};
 use hashavatar::{
     AVATAR_STYLE_VERSION, AvatarAccessory, AvatarBackground, AvatarColor, AvatarExpression,
-    AvatarHashAlgorithm, AvatarIdentityOptions, AvatarKind, AvatarNamespace, AvatarOptions,
-    AvatarOutputFormat, AvatarShape, AvatarSpec, AvatarStyleOptions,
-    encode_avatar_style_with_identity_options, render_avatar_for_namespace,
-    render_avatar_svg_style_with_identity_options,
+    AvatarIdentityOptions, AvatarKind, AvatarNamespace, AvatarOptions, AvatarOutputFormat,
+    AvatarShape, AvatarSpec, AvatarStyleOptions, encode_avatar_style_with_identity_options,
+    render_avatar_for_namespace,
 };
 use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use ipnet::IpNet;
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::sync::Mutex;
 
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 8080;
@@ -40,7 +39,7 @@ const REPOSITORY_URL: &str = "https://github.com/valkyoth/hashavatar-api";
 const CRATE_URL: &str = "https://crates.io/crates/hashavatar/";
 const DEFAULT_NAMESPACE_TENANT: &str = "public";
 const DEFAULT_NAMESPACE_STYLE: &str = "v2";
-const DEFAULT_HASH_ALGORITHM: AvatarHashAlgorithm = AvatarHashAlgorithm::Sha512;
+const DEFAULT_HASH_ALGORITHM: &str = "sha512";
 const DEFAULT_ACCESSORY: AvatarAccessory = AvatarAccessory::None;
 const DEFAULT_COLOR: AvatarColor = AvatarColor::Default;
 const DEFAULT_EXPRESSION: AvatarExpression = AvatarExpression::Default;
@@ -55,7 +54,11 @@ const MAX_SIZE: u32 = 1024;
 const MAX_ID_BYTES: usize = 512;
 const MAX_NAMESPACE_COMPONENT_BYTES: usize = 64;
 const PRESET_PAGE_SIZE: usize = 12;
-const INDEX_SCRIPT_SHA256: &str = "'sha256-Y0zQEpA7MCRQT9l5Hg4gct0PrA19C+YJJHjA3PJJM/I='";
+const INVALID_NAMESPACE_MESSAGE: &str = "invalid namespace: tenant and style_version must be 1-64 ASCII letters, digits, hyphens, or underscores";
+const INVALID_HASH_ALGORITHM_MESSAGE: &str = "unsupported hash algorithm: expected sha512";
+const INVALID_AVATAR_FORMAT_MESSAGE: &str = "unsupported avatar format: expected webp";
+const INVALID_AVATAR_RENDER_MESSAGE: &str = "avatar generation failed";
+const INDEX_SCRIPT_SHA256: &str = "'sha256-7gjoUnTfcILxVkX3DugGXgaAEhWr+Pn91S0M+2HGQTs='";
 const INDEX_SCRIPT_SHA256_COMPAT: &str = "'sha256-ZswfTY7H35rbv8WC7NXBoiC7WNu86vSzCDChNWwZZDM='";
 
 struct AppState {
@@ -106,7 +109,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/favicon.svg", get(favicon_svg))
         .route("/site.webmanifest", get(site_webmanifest))
         .route("/og.png", get(og_png))
-        .route("/metrics", get(metrics_json))
+        .route(
+            "/metrics",
+            get(metrics_json).route_layer(middleware::from_fn(require_loopback_peer)),
+        )
         .route("/healthz", get(healthz))
         .route("/v1/avatar", get(query_avatar))
         .route("/v1/avatar/link", get(query_avatar_link))
@@ -170,12 +176,16 @@ async fn add_security_headers(mut request: Request, next: Next) -> Response {
         .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|content_type| content_type.starts_with("text/html"));
-    let headers = response.headers_mut();
     let csp = content_security_policy(&csp_nonce);
+    apply_security_headers(response.headers_mut(), &csp, is_html_response);
 
+    response
+}
+
+fn apply_security_headers(headers: &mut HeaderMap, csp: &str, is_html_response: bool) {
     headers.insert(
         header::HeaderName::from_static("content-security-policy"),
-        HeaderValue::from_str(&csp).unwrap_or_else(|_| {
+        HeaderValue::from_str(csp).unwrap_or_else(|_| {
             HeaderValue::from_static(
                 "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'",
             )
@@ -197,14 +207,39 @@ async fn add_security_headers(mut request: Request, next: Next) -> Response {
         header::HeaderName::from_static("x-frame-options"),
         HeaderValue::from_static("DENY"),
     );
+    headers.insert(
+        header::HeaderName::from_static("cross-origin-resource-policy"),
+        HeaderValue::from_static("cross-origin"),
+    );
     if is_html_response {
         headers.insert(
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-store, max-age=0"),
         );
+        headers.insert(
+            header::HeaderName::from_static("cross-origin-opener-policy"),
+            HeaderValue::from_static("same-origin"),
+        );
+        headers.insert(
+            header::HeaderName::from_static("strict-transport-security"),
+            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        );
     }
+}
 
-    response
+async fn require_loopback_peer(
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if !is_loopback_peer(peer_addr) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    next.run(request).await
+}
+
+fn is_loopback_peer(peer_addr: SocketAddr) -> bool {
+    peer_addr.ip().is_loopback()
 }
 
 fn secure_rng_failure(error: getrandom::Error) -> Response {
@@ -230,6 +265,10 @@ fn secure_rng_failure(error: getrandom::Error) -> Response {
     headers.insert(
         header::HeaderName::from_static("x-frame-options"),
         HeaderValue::from_static("DENY"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("cross-origin-resource-policy"),
+        HeaderValue::from_static("cross-origin"),
     );
     response
 }
@@ -321,7 +360,11 @@ async fn metrics_json(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 async fn openapi_json() -> impl IntoResponse {
-    Json(serde_json::json!({
+    Json(openapi_document())
+}
+
+fn openapi_document() -> serde_json::Value {
+    serde_json::json!({
         "openapi": "3.1.0",
         "info": {
             "title": "hashavatar.app API",
@@ -337,14 +380,14 @@ async fn openapi_json() -> impl IntoResponse {
                         {"name":"id","in":"query","schema":{"type":"string"}},
                         {"name":"tenant","in":"query","schema":{"type":"string"}},
                         {"name":"style_version","in":"query","schema":{"type":"string"}},
-                        {"name":"algorithm","in":"query","schema":{"type":"string","enum": AvatarHashAlgorithm::ALL.iter().map(|algorithm| algorithm.as_str()).collect::<Vec<_>>()}},
+                        {"name":"algorithm","in":"query","schema":{"type":"string","enum": ["sha512"]}},
                         {"name":"kind","in":"query","schema":{"type":"string","enum": AvatarKind::ALL.iter().map(|kind| kind.as_str()).collect::<Vec<_>>()}},
                         {"name":"background","in":"query","schema":{"type":"string","enum": AvatarBackground::ALL.iter().map(|background| background.as_str()).collect::<Vec<_>>()}},
                         {"name":"accessory","in":"query","schema":{"type":"string","enum": AvatarAccessory::ALL.iter().map(|accessory| accessory.as_str()).collect::<Vec<_>>()}},
                         {"name":"color","in":"query","schema":{"type":"string","enum": AvatarColor::ALL.iter().map(|color| color.as_str()).collect::<Vec<_>>()}},
                         {"name":"expression","in":"query","schema":{"type":"string","enum": AvatarExpression::ALL.iter().map(|expression| expression.as_str()).collect::<Vec<_>>()}},
                         {"name":"shape","in":"query","schema":{"type":"string","enum": AvatarShape::ALL.iter().map(|shape| shape.as_str()).collect::<Vec<_>>()}},
-                        {"name":"format","in":"query","schema":{"type":"string","enum":["webp","png","jpg","gif","svg"]}},
+                        {"name":"format","in":"query","schema":{"type":"string","enum":["webp"]}},
                         {"name":"size","in":"query","schema":{"type":"integer","minimum": MIN_SIZE, "maximum": MAX_SIZE}}
                     ],
                     "responses": {"200":{"description":"Avatar asset"}}
@@ -362,27 +405,25 @@ async fn openapi_json() -> impl IntoResponse {
                     "responses": {"200":{"description":"Avatar asset"}}
                 }
             },
-            "/metrics": {
-                "get": {
-                    "summary": "Service metrics",
-                    "responses": {"200":{"description":"Metrics JSON"}}
-                }
-            }
         }
-    }))
+    })
 }
 
 async fn og_png(Query(query): Query<OgQuery>) -> Response {
     let title_id = query.id.unwrap_or_else(|| DEFAULT_ID.to_string());
-    let namespace = match AvatarNamespace::new(
-        query.tenant.as_deref().unwrap_or(DEFAULT_NAMESPACE_TENANT),
-        query
-            .style_version
-            .as_deref()
-            .unwrap_or(DEFAULT_NAMESPACE_STYLE),
-    ) {
+    let tenant = query.tenant.as_deref().unwrap_or(DEFAULT_NAMESPACE_TENANT);
+    let style_version = query
+        .style_version
+        .as_deref()
+        .unwrap_or(DEFAULT_NAMESPACE_STYLE);
+    if validate_namespace_component("tenant", tenant).is_err()
+        || validate_namespace_component("style_version", style_version).is_err()
+    {
+        return bad_request(INVALID_NAMESPACE_MESSAGE);
+    }
+    let namespace = match AvatarNamespace::new(tenant, style_version) {
         Ok(namespace) => namespace,
-        Err(error) => return bad_request(&error.to_string()),
+        Err(_) => return bad_request(INVALID_NAMESPACE_MESSAGE),
     };
     let spec = AvatarSpec::new(220, 220, 0).expect("Open Graph avatar spec should be valid");
 
@@ -414,9 +455,11 @@ async fn og_png(Query(query): Query<OgQuery>) -> Response {
             ),
         ) {
             Ok(avatar) => avatar,
-            Err(error) => return bad_request(&error.to_string()),
+            Err(_) => return bad_request(INVALID_AVATAR_RENDER_MESSAGE),
         };
-        overlay(&mut canvas, &avatar, 110 + idx as u32 * 260, 180);
+        if let Err(error) = overlay(&mut canvas, &avatar, 110 + idx as u32 * 260, 180) {
+            return internal_error(error);
+        }
     }
 
     let bytes = {
@@ -450,14 +493,11 @@ async fn og_png(Query(query): Query<OgQuery>) -> Response {
         .into_response()
 }
 
-async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
+async fn healthz() -> impl IntoResponse {
     (
         StatusCode::OK,
         Json(serde_json::json!({
             "status": "ok",
-            "service": "hashavatar-api",
-            "s3_enabled": state.storage.is_some(),
-            "style_version": AVATAR_STYLE_VERSION,
         })),
     )
 }
@@ -583,15 +623,9 @@ impl RateLimiter {
         }
     }
 
-    fn check(&self, key: String, limit: u32) -> bool {
+    async fn check(&self, key: String, limit: u32) -> bool {
         let now = Instant::now();
-        let mut buckets = match self.buckets.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                tracing::warn!("recovering poisoned rate limiter state");
-                poisoned.into_inner()
-            }
-        };
+        let mut buckets = self.buckets.lock().await;
         let bucket = buckets.bucket_for(key, now);
         if now.duration_since(bucket.started_at) >= RATE_LIMIT_WINDOW {
             bucket.started_at = now;
@@ -605,11 +639,8 @@ impl RateLimiter {
     }
 
     #[cfg(test)]
-    fn len(&self) -> usize {
-        match self.buckets.lock() {
-            Ok(guard) => guard.len(),
-            Err(poisoned) => poisoned.into_inner().len(),
-        }
+    async fn len(&self) -> usize {
+        self.buckets.lock().await.len()
     }
 }
 
@@ -669,7 +700,10 @@ impl Metrics {
     fn observe_generation(&self, duration: Duration) {
         let millis = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
         self.generation_millis_total
-            .fetch_add(millis, Ordering::Relaxed);
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                Some(current.saturating_add(millis))
+            })
+            .ok();
     }
 
     fn snapshot(&self, s3_enabled: bool) -> MetricsSnapshot {
@@ -702,7 +736,7 @@ async fn enforce_limits(
 ) -> Result<(), Response> {
     let ip = client_ip(headers, peer_ip, &state.trusted_proxies);
     let key = rate_limit_key(route, &ip);
-    let allowed = state.rate_limiter.check(key, route.limit());
+    let allowed = state.rate_limiter.check(key, route.limit()).await;
     if allowed {
         Ok(())
     } else {
@@ -809,14 +843,13 @@ async fn path_avatar(
     };
     let format = match AvatarRequestFormat::from_str(&path.format) {
         Ok(format) => format,
-        Err(_) => return bad_request("unsupported avatar format"),
+        Err(_) => return bad_request(INVALID_AVATAR_FORMAT_MESSAGE),
     };
 
     let request = AvatarRequest {
         identity: path.identity,
         namespace_tenant: DEFAULT_NAMESPACE_TENANT.to_string(),
         namespace_style: DEFAULT_NAMESPACE_STYLE.to_string(),
-        algorithm: DEFAULT_HASH_ALGORITHM,
         kind,
         background: AvatarBackground::Themed,
         accessory: DEFAULT_ACCESSORY,
@@ -843,14 +876,9 @@ async fn path_avatar(
 async fn serve_avatar(state: AppState, request: AvatarRequest) -> Response {
     state.metrics.requests_total.fetch_add(1, Ordering::Relaxed);
     let started = Instant::now();
-    let asset = match tokio::time::timeout(Duration::from_millis(AVATAR_TIMEOUT_MS), async {
-        build_avatar_asset(&request)
-    })
-    .await
-    {
-        Ok(Ok(asset)) => asset,
-        Ok(Err(message)) => return bad_request(&message),
-        Err(_) => return request_timeout("avatar generation timed out"),
+    let asset = match generate_avatar_asset(request.clone()).await {
+        Ok(asset) => asset,
+        Err(response) => return response,
     };
 
     state
@@ -917,14 +945,9 @@ async fn serve_avatar_link(state: AppState, request: AvatarRequest) -> Response 
     };
 
     let started = Instant::now();
-    let asset = match tokio::time::timeout(Duration::from_millis(AVATAR_TIMEOUT_MS), async {
-        build_avatar_asset(&request)
-    })
-    .await
-    {
-        Ok(Ok(asset)) => asset,
-        Ok(Err(message)) => return bad_request(&message),
-        Err(_) => return request_timeout("avatar generation timed out"),
+    let asset = match generate_avatar_asset(request).await {
+        Ok(asset) => asset,
+        Err(response) => return response,
     };
     state.metrics.observe_generation(started.elapsed());
     state
@@ -954,6 +977,16 @@ async fn serve_avatar_link(state: AppState, request: AvatarRequest) -> Response 
     }
 }
 
+async fn generate_avatar_asset(request: AvatarRequest) -> Result<AvatarAsset, Response> {
+    let render = tokio::task::spawn_blocking(move || build_avatar_asset(&request));
+    match tokio::time::timeout(Duration::from_millis(AVATAR_TIMEOUT_MS), render).await {
+        Ok(Ok(Ok(asset))) => Ok(asset),
+        Ok(Ok(Err(message))) => Err(bad_request(&message)),
+        Ok(Err(error)) => Err(internal_error(error)),
+        Err(_) => Err(request_timeout("avatar generation timed out")),
+    }
+}
+
 fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
     let identity = request.identity.trim();
     validate_identity(identity)?;
@@ -964,18 +997,19 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
         return Err("size must be between 64 and 1024".to_string());
     }
 
-    let spec = AvatarSpec::new(request.size, request.size, 0).map_err(|error| error.to_string())?;
+    let spec = AvatarSpec::new(request.size, request.size, 0)
+        .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())?;
     let style = request.style_options();
     let namespace = AvatarNamespace::new(&request.namespace_tenant, &request.namespace_style)
-        .map_err(|error| error.to_string())?;
-    let identity_options = AvatarIdentityOptions::new(namespace, request.algorithm);
+        .map_err(|_| INVALID_NAMESPACE_MESSAGE.to_string())?;
+    let identity_options = AvatarIdentityOptions::new(namespace);
     let accessory = request.effective_accessory();
     let expression = request.effective_expression();
     let cache_key = format!(
         "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
         request.namespace_tenant,
         request.namespace_style,
-        request.algorithm,
+        DEFAULT_HASH_ALGORITHM,
         identity,
         request.kind,
         request.background,
@@ -987,62 +1021,18 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
         request.size
     );
 
-    let (body, content_type) = match request.format {
-        AvatarRequestFormat::Webp => (
-            encode_avatar_style_with_identity_options(
-                spec,
-                identity_options,
-                identity,
-                AvatarOutputFormat::WebP,
-                style,
-            )
-            .map_err(|error| format!("avatar generation failed: {error}"))?,
-            "image/webp",
-        ),
-        AvatarRequestFormat::Png => (
-            encode_avatar_style_with_identity_options(
-                spec,
-                identity_options,
-                identity,
-                AvatarOutputFormat::Png,
-                style,
-            )
-            .map_err(|error| format!("avatar generation failed: {error}"))?,
-            "image/png",
-        ),
-        AvatarRequestFormat::Jpeg => (
-            encode_avatar_style_with_identity_options(
-                spec,
-                identity_options,
-                identity,
-                AvatarOutputFormat::Jpeg,
-                style,
-            )
-            .map_err(|error| format!("avatar generation failed: {error}"))?,
-            "image/jpeg",
-        ),
-        AvatarRequestFormat::Gif => (
-            encode_avatar_style_with_identity_options(
-                spec,
-                identity_options,
-                identity,
-                AvatarOutputFormat::Gif,
-                style,
-            )
-            .map_err(|error| format!("avatar generation failed: {error}"))?,
-            "image/gif",
-        ),
-        AvatarRequestFormat::Svg => (
-            render_avatar_svg_style_with_identity_options(spec, identity_options, identity, style)
-                .map_err(|error| format!("avatar generation failed: {error}"))?
-                .into_bytes(),
-            "image/svg+xml",
-        ),
-    };
+    let body = encode_avatar_style_with_identity_options(
+        spec,
+        identity_options,
+        identity,
+        AvatarOutputFormat::WebP,
+        style,
+    )
+    .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())?;
 
     Ok(AvatarAsset {
         body,
-        content_type,
+        content_type: "image/webp",
         cache_key,
         object_key: object_key_for(request, identity),
     })
@@ -1088,7 +1078,7 @@ fn object_key_for(request: &AvatarRequest, identity: &str) -> String {
             "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
             request.namespace_tenant,
             request.namespace_style,
-            request.algorithm,
+            DEFAULT_HASH_ALGORITHM,
             identity,
             request.kind,
             request.background,
@@ -1109,7 +1099,7 @@ fn object_key_for(request: &AvatarRequest, identity: &str) -> String {
         "{}/{}/{}/{}/{}/{}/{}/{}/{}/{}/{}.{}",
         request.namespace_tenant,
         request.namespace_style,
-        request.algorithm.as_str(),
+        DEFAULT_HASH_ALGORITHM,
         request.kind.as_str(),
         request.background.as_str(),
         accessory.as_str(),
@@ -1143,6 +1133,15 @@ fn validate_namespace_component(name: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_hash_algorithm(value: Option<&str>) -> Result<(), String> {
+    match value.map(str::trim) {
+        Some(raw) if !raw.is_empty() && !raw.eq_ignore_ascii_case(DEFAULT_HASH_ALGORITHM) => {
+            Err(INVALID_HASH_ALGORITHM_MESSAGE.to_string())
+        }
+        _ => Ok(()),
+    }
+}
+
 fn is_valid_namespace_component(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_NAMESPACE_COMPONENT_BYTES
@@ -1173,9 +1172,12 @@ fn draw_rect(image: &mut RgbaImage, x: u32, y: u32, width: u32, height: u32, col
 }
 
 fn draw_circle(image: &mut RgbaImage, cx: i32, cy: i32, radius: i32, color: Rgba<u8>) {
+    if radius < 0 {
+        return;
+    }
     for y in -radius..=radius {
         for x in -radius..=radius {
-            if x * x + y * y <= radius * radius {
+            if is_inside_circle(x, y, radius) {
                 let px = cx + x;
                 let py = cy + y;
                 if px >= 0 && py >= 0 && (px as u32) < image.width() && (py as u32) < image.height()
@@ -1187,8 +1189,23 @@ fn draw_circle(image: &mut RgbaImage, cx: i32, cy: i32, radius: i32, color: Rgba
     }
 }
 
-fn overlay(canvas: &mut RgbaImage, image: &RgbaImage, x: u32, y: u32) {
-    let _ = canvas.copy_from(image, x, y);
+fn is_inside_circle(x: i32, y: i32, radius: i32) -> bool {
+    if radius < 0 {
+        return false;
+    }
+    let x_squared = i64::from(x) * i64::from(x);
+    let y_squared = i64::from(y) * i64::from(y);
+    let radius_squared = i64::from(radius) * i64::from(radius);
+    x_squared + y_squared <= radius_squared
+}
+
+fn overlay(
+    canvas: &mut RgbaImage,
+    image: &RgbaImage,
+    x: u32,
+    y: u32,
+) -> Result<(), image::ImageError> {
+    canvas.copy_from(image, x, y)
 }
 
 fn shared_page_styles() -> &'static str {
@@ -1369,10 +1386,6 @@ fn selected_attr(selected: bool) -> &'static str {
     if selected { " selected" } else { "" }
 }
 
-fn checked_attr(checked: bool) -> &'static str {
-    if checked { " checked" } else { "" }
-}
-
 fn disabled_attr(disabled: bool) -> &'static str {
     if disabled { " disabled" } else { "" }
 }
@@ -1402,6 +1415,14 @@ fn avatar_kind_label(kind: AvatarKind) -> &'static str {
         AvatarKind::Icecream => "Ice Cream",
         AvatarKind::Octopus => "Octopus",
         AvatarKind::Knight => "Knight",
+        AvatarKind::Bear => "Bear",
+        AvatarKind::Penguin => "Penguin",
+        AvatarKind::Dragon => "Dragon",
+        AvatarKind::Ninja => "Ninja",
+        AvatarKind::Astronaut => "Astronaut",
+        AvatarKind::Diamond => "Diamond",
+        AvatarKind::CoffeeCup => "Coffee Cup",
+        AvatarKind::Shield => "Shield",
     }
 }
 
@@ -1463,30 +1484,6 @@ fn shape_label(shape: AvatarShape) -> &'static str {
         AvatarShape::Hexagon => "Hexagon",
         AvatarShape::Octagon => "Octagon",
     }
-}
-
-fn hash_algorithm_label(algorithm: AvatarHashAlgorithm) -> &'static str {
-    match algorithm {
-        AvatarHashAlgorithm::Sha512 => "SHA-512",
-        AvatarHashAlgorithm::Blake3 => "BLAKE3",
-        AvatarHashAlgorithm::Xxh3_128 => "XXH3",
-    }
-}
-
-fn hash_algorithm_options_html(selected: AvatarHashAlgorithm) -> String {
-    AvatarHashAlgorithm::ALL
-        .iter()
-        .copied()
-        .map(|algorithm| {
-            format!(
-                r#"<label class="algorithm-option"><input type="radio" name="algorithm" value="{value}"{checked} /><span>{label}</span></label>"#,
-                value = algorithm.as_str(),
-                checked = checked_attr(algorithm == selected),
-                label = hash_algorithm_label(algorithm),
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 fn kind_options_html(selected: AvatarKind) -> String {
@@ -1586,27 +1583,6 @@ fn shape_options_html(selected: AvatarShape) -> String {
         .join("\n")
 }
 
-fn format_options_html(selected: AvatarRequestFormat) -> String {
-    [
-        (AvatarRequestFormat::Webp, "WebP"),
-        (AvatarRequestFormat::Png, "PNG"),
-        (AvatarRequestFormat::Jpeg, "JPEG/JPG"),
-        (AvatarRequestFormat::Gif, "GIF"),
-        (AvatarRequestFormat::Svg, "SVG"),
-    ]
-    .into_iter()
-    .map(|(format, label)| {
-        format!(
-            r#"<option value="{value}"{selected}>{label}</option>"#,
-            value = format.as_str(),
-            selected = selected_attr(format == selected),
-            label = label,
-        )
-    })
-    .collect::<Vec<_>>()
-    .join("\n")
-}
-
 #[derive(Serialize)]
 struct PresetExample {
     label: &'static str,
@@ -1633,8 +1609,11 @@ fn preset_examples() -> Vec<PresetExample> {
                 | AvatarKind::Robot
                 | AvatarKind::Slime
                 | AvatarKind::Wizard
-                | AvatarKind::Paws => "white",
-                AvatarKind::Panda | AvatarKind::Knight => "light",
+                | AvatarKind::Paws
+                | AvatarKind::Penguin
+                | AvatarKind::Astronaut
+                | AvatarKind::CoffeeCup => "white",
+                AvatarKind::Panda | AvatarKind::Knight | AvatarKind::Bear => "light",
                 AvatarKind::Ghost | AvatarKind::Skull => "dark",
                 _ => "themed",
             },
@@ -1666,6 +1645,14 @@ fn preset_examples() -> Vec<PresetExample> {
                 "icecream" => "icecream@hashavatar.app",
                 "octopus" => "octopus@hashavatar.app",
                 "knight" => "knight@hashavatar.app",
+                "bear" => "bear@hashavatar.app",
+                "penguin" => "penguin@hashavatar.app",
+                "dragon" => "dragon@hashavatar.app",
+                "ninja" => "ninja@hashavatar.app",
+                "astronaut" => "astronaut@hashavatar.app",
+                "diamond" => "diamond@hashavatar.app",
+                "coffee-cup" => "coffee-cup@hashavatar.app",
+                "shield" => "shield@hashavatar.app",
                 _ => DEFAULT_ID,
             };
             preset
@@ -1827,7 +1814,7 @@ fn render_page_html(
 }
 
 fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> String {
-    let description = "Deterministic procedural avatars for opaque user ids, stable usernames, and one-way hashes. Generate 23 avatar families as WebP, PNG, JPEG, GIF, or SVG.";
+    let description = "Deterministic procedural avatars for opaque user ids, stable usernames, and one-way hashes. Generate 31 avatar families as WebP images.";
     let nonce = escape_html_attribute(csp_nonce.as_str());
     format!(
         r#"<!DOCTYPE html>
@@ -1899,51 +1886,6 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       border-color: rgba(217, 122, 66, 0.65);
       box-shadow: 0 0 0 5px rgba(217, 122, 66, 0.12);
       transform: translateY(-1px);
-    }}
-    .algorithm-options {{
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }}
-    .algorithm-option {{
-      margin: 0;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-height: 48px;
-      padding: 12px 14px;
-      border: 1px solid rgba(82, 96, 109, 0.18);
-      border-radius: 999px;
-      background: rgba(255,255,255,0.95);
-      cursor: pointer;
-      transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-    }}
-    .algorithm-option:hover,
-    .algorithm-option:has(input:checked) {{
-      border-color: rgba(217, 122, 66, 0.65);
-      box-shadow: 0 10px 22px rgba(201, 104, 49, 0.12);
-      transform: translateY(-1px);
-    }}
-    .algorithm-option input {{
-      width: 16px;
-      height: 16px;
-      min-width: 16px;
-      margin: 0;
-      padding: 0;
-      border: 0;
-      background: transparent;
-      box-shadow: none;
-      transform: none;
-      accent-color: var(--accent);
-    }}
-    .algorithm-option input:focus {{
-      box-shadow: none;
-      transform: none;
-    }}
-    .algorithm-option span {{
-      font-weight: 800;
-      color: var(--ink);
-      white-space: nowrap;
     }}
     .actions {{
       display: flex;
@@ -2097,7 +2039,6 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       .hero {{ grid-template-columns: 1fr; }}
       .copy {{ border-right: 0; border-bottom: 1px solid var(--line); }}
       .field-grid {{ grid-template-columns: 1fr; }}
-      .algorithm-options {{ grid-template-columns: 1fr; }}
       .example-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
     }}
     @media (max-width: 560px) {{
@@ -2124,22 +2065,13 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         <h1>Generate A Public Avatar In Seconds</h1>
         <p>
           Turn any opaque user id, stable username, or one-way hash into a deterministic avatar URL.
-          Choose the style, background, output format, and size, then copy the URL, download the result, or create a signed object-storage link.
+          Choose the style, background, and size, then copy the WebP URL, download the result, or create a signed object-storage link.
         </p>
         <p>
           Privacy-conscious integration tip: email-shaped identifiers are accepted for convenience, but a stable internal id or one-way hash is better when you want less personal data in URL logs.
         </p>
 
         <div class="generator">
-          <div class="field-grid full">
-            <div>
-              <label>Hash Algorithm</label>
-              <div class="algorithm-options">
-                {algorithm_options}
-              </div>
-            </div>
-          </div>
-
           <div class="field-grid full">
             <div>
               <label for="identity">Identity</label>
@@ -2203,13 +2135,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
             </div>
           </div>
 
-          <div class="field-grid">
-            <div>
-              <label for="format">Format</label>
-              <select id="format">
-                {format_options}
-              </select>
-            </div>
+          <div class="field-grid full">
             <div>
               <label for="size">Size</label>
               <select id="size">
@@ -2241,7 +2167,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
 
           <div class="url-panel">
             <div class="url-label">Machine-Readable API</div>
-            <div class="url-text"><a class="inline-link" href="/docs/openapi.json">/docs/openapi.json</a> and <a class="inline-link" href="/metrics">/metrics</a></div>
+            <div class="url-text"><a class="inline-link" href="/docs/openapi.json">/docs/openapi.json</a></div>
           </div>
         </div>
       </div>
@@ -2275,7 +2201,6 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
   </main>
   <script nonce="{nonce}">
     const identityEl = document.getElementById("identity");
-    const algorithmEls = Array.from(document.querySelectorAll("input[name='algorithm']"));
     const tenantEl = document.getElementById("tenant");
     const styleVersionEl = document.getElementById("style-version");
     const kindEl = document.getElementById("kind");
@@ -2284,7 +2209,6 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
     const colorEl = document.getElementById("color");
     const expressionEl = document.getElementById("expression");
     const shapeEl = document.getElementById("shape");
-    const formatEl = document.getElementById("format");
     const sizeEl = document.getElementById("size");
     const previewEl = document.getElementById("avatar-preview");
     const urlEl = document.getElementById("avatar-url");
@@ -2307,14 +2231,11 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       Array.from(kindEl.options).map((option) => [option.value, option.dataset.supportsLayers === "true"])
     );
     let presetPage = 0;
+    let refreshTimer = 0;
+    let presetRenderTimer = 0;
 
     function currentIdentity() {{
       return identityEl.value.trim() || "{id}";
-    }}
-
-    function currentAlgorithm() {{
-      const selected = algorithmEls.find((el) => el.checked);
-      return selected ? selected.value : "sha512";
     }}
 
     function selectedPresetIdentity() {{
@@ -2367,14 +2288,14 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         id: currentIdentity(),
         tenant: tenantEl.value.trim() || "{tenant}",
         style_version: styleVersionEl.value.trim() || "{style_version}",
-        algorithm: currentAlgorithm(),
+        algorithm: "sha512",
         kind: kindEl.value,
         background: backgroundEl.value,
         accessory: styleParams.accessory,
         color: styleParams.color,
         expression: styleParams.expression,
         shape: styleParams.shape,
-        format: formatEl.value,
+        format: "webp",
         size: sizeEl.value,
       }});
       return `/v1/avatar?${{query.toString()}}`;
@@ -2386,14 +2307,14 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         id: currentIdentity(),
         tenant: tenantEl.value.trim() || "{tenant}",
         style_version: styleVersionEl.value.trim() || "{style_version}",
-        algorithm: currentAlgorithm(),
+        algorithm: "sha512",
         kind: kindEl.value,
         background: backgroundEl.value,
         accessory: styleParams.accessory,
         color: styleParams.color,
         expression: styleParams.expression,
         shape: styleParams.shape,
-        format: formatEl.value,
+        format: "webp",
         size: sizeEl.value,
       }});
       return `/v1/avatar/link?${{query.toString()}}`;
@@ -2429,14 +2350,14 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         id: currentIdentity(),
         tenant: tenantEl.value.trim() || "{tenant}",
         style_version: styleVersionEl.value.trim() || "{style_version}",
-        algorithm: currentAlgorithm(),
+        algorithm: "sha512",
         kind: kindEl.value,
         background: backgroundEl.value,
         accessory: styleParams.accessory,
         color: styleParams.color,
         expression: styleParams.expression,
         shape: styleParams.shape,
-        format: formatEl.value === "svg" ? "svg" : "webp",
+        format: "webp",
         size: sizeEl.value,
         ts: String(Date.now()),
       }});
@@ -2444,10 +2365,28 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       previewEl.src = `/v1/avatar?${{previewQuery.toString()}}`;
       urlEl.textContent = `${{window.location.origin}}${{url}}`;
       downloadButton.href = url;
-      const extension = formatEl.value === "jpg" ? "jpg" : formatEl.value;
-      downloadButton.setAttribute("download", `hashavatar-${{kindEl.value}}.${{extension}}`);
+      downloadButton.setAttribute("download", `hashavatar-${{kindEl.value}}.webp`);
       openButton.href = url;
       updateSignedUrl();
+    }}
+
+    function scheduleRefresh() {{
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(refresh, 180);
+    }}
+
+    function scheduleFullRefresh() {{
+      window.clearTimeout(refreshTimer);
+      window.clearTimeout(presetRenderTimer);
+      refreshTimer = window.setTimeout(refresh, 180);
+      presetRenderTimer = window.setTimeout(renderPresetPage, 180);
+    }}
+
+    function refreshNowWithPresets() {{
+      window.clearTimeout(refreshTimer);
+      window.clearTimeout(presetRenderTimer);
+      renderPresetPage();
+      refresh();
     }}
 
     function setFromPreset(preset) {{
@@ -2456,9 +2395,8 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       styleVersionEl.value = "{style_version}";
       kindEl.value = preset.kind;
       backgroundEl.value = backgroundEl.value || preset.background;
-      formatEl.value = preset.format;
       sizeEl.value = preset.size;
-      refresh();
+      refreshNowWithPresets();
     }}
 
     function renderPresetPage() {{
@@ -2476,10 +2414,10 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         button.addEventListener("click", () => setFromPreset(preset));
 
         const query = new URLSearchParams({{
-          id: preset.id,
+          id: currentIdentity(),
           tenant: tenantEl.value.trim() || "{tenant}",
           style_version: styleVersionEl.value.trim() || "{style_version}",
-          algorithm: currentAlgorithm(),
+          algorithm: "sha512",
           kind: preset.kind,
           background: exampleBackground,
           accessory: styleParams.accessory,
@@ -2518,19 +2456,17 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
     copyButton.addEventListener("click", () => copyText(`${{window.location.origin}}${{currentUrl()}}`, copyButton, "Copy URL", "Copied"));
     copySignedButton.addEventListener("click", () => copyText(signedUrlEl.textContent, copySignedButton, "Copy Signed Link", "Copied"));
 
-    [identityEl, tenantEl, styleVersionEl, kindEl, backgroundEl, accessoryEl, colorEl, expressionEl, shapeEl, formatEl, sizeEl].forEach((el) => {{
-      el.addEventListener("input", refresh);
-      el.addEventListener("change", refresh);
-    }});
-    algorithmEls.forEach((el) => {{
-      el.addEventListener("change", () => {{
-        renderPresetPage();
-        refresh();
-      }});
+    [identityEl, tenantEl, styleVersionEl].forEach((el) => {{
+      el.addEventListener("input", scheduleFullRefresh);
+      el.addEventListener("change", refreshNowWithPresets);
     }});
 
+    sizeEl.addEventListener("input", scheduleRefresh);
+    sizeEl.addEventListener("change", refresh);
+
     [backgroundEl, accessoryEl, colorEl, expressionEl, shapeEl].forEach((el) => {{
-      el.addEventListener("change", renderPresetPage);
+      el.addEventListener("input", scheduleRefresh);
+      el.addEventListener("change", refreshNowWithPresets);
     }});
 
     kindEl.addEventListener("change", () => {{
@@ -2538,8 +2474,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       if (current === "" || isPresetIdentity(current)) {{
         identityEl.value = selectedPresetIdentity();
       }}
-      renderPresetPage();
-      refresh();
+      refreshNowWithPresets();
     }});
 
     presetPrev.addEventListener("click", () => {{
@@ -2560,14 +2495,12 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         id = DEFAULT_ID,
         tenant = DEFAULT_NAMESPACE_TENANT,
         style_version = DEFAULT_NAMESPACE_STYLE,
-        algorithm_options = hash_algorithm_options_html(DEFAULT_HASH_ALGORITHM),
         kind_options = kind_options_html(AvatarKind::Cat),
         background_options = background_options_html(AvatarBackground::Themed),
         accessory_options = accessory_options_html(DEFAULT_ACCESSORY),
         color_options = color_options_html(DEFAULT_COLOR),
         expression_options = expression_options_html(DEFAULT_EXPRESSION),
         shape_options = shape_options_html(DEFAULT_SHAPE),
-        format_options = format_options_html(AvatarRequestFormat::Webp),
         preset_examples = preset_examples_json(),
         preset_page_size = PRESET_PAGE_SIZE,
         storage_links_enabled = storage_links_enabled,
@@ -2599,12 +2532,12 @@ fn render_help_html(csp_nonce: &CspNonce) -> String {
   <section class="card">
     <h2>Path Style URL</h2>
     <p>Use the path form if you prefer cleaner embed URLs.</p>
-    <pre><code>https://{site}/avatar/fox/fox@hashavatar.app/svg</code></pre>
+    <pre><code>https://{site}/avatar/fox/fox@hashavatar.app/webp</code></pre>
   </section>
   <section class="card">
     <h2>HTML Example</h2>
     <pre><code>&lt;img
-  src="https://{site}/v1/avatar?id=monster@hashavatar.app&amp;algorithm=blake3&amp;kind=monster&amp;background=themed&amp;accessory=horns&amp;color=crimson&amp;expression=grumpy&amp;shape=hexagon&amp;format=webp&amp;size=256"
+  src="https://{site}/v1/avatar?id=monster@hashavatar.app&amp;algorithm=sha512&amp;kind=monster&amp;background=themed&amp;accessory=horns&amp;color=crimson&amp;expression=grumpy&amp;shape=hexagon&amp;format=webp&amp;size=256"
   alt="Generated monster avatar"
 /&gt;</code></pre>
   </section>
@@ -2631,17 +2564,17 @@ avatarUrl.search = new URLSearchParams({{
     <li><code>id</code>: any stable identifier such as an email, username, internal user id, or one-way hash</li>
     <li><code>tenant</code>: optional namespace partition for multi-tenant apps</li>
     <li><code>style_version</code>: optional style namespace such as <code>v2</code></li>
-    <li><code>algorithm</code>: identity hash mode, one of <code>sha512</code>, <code>blake3</code>, or <code>xxh3-128</code></li>
-    <li><code>kind</code>: any public hashavatar family, including <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>planet</code>, <code>rocket</code>, <code>frog</code>, <code>panda</code>, <code>cupcake</code>, <code>pizza</code>, <code>octopus</code>, and <code>knight</code></li>
+    <li><code>algorithm</code>: identity hash mode; only <code>sha512</code> is supported</li>
+    <li><code>kind</code>: any public hashavatar family, including <code>cat</code>, <code>dog</code>, <code>robot</code>, <code>planet</code>, <code>rocket</code>, <code>frog</code>, <code>panda</code>, <code>cupcake</code>, <code>pizza</code>, <code>octopus</code>, <code>knight</code>, <code>bear</code>, <code>penguin</code>, <code>dragon</code>, <code>ninja</code>, <code>astronaut</code>, <code>diamond</code>, <code>coffee-cup</code>, and <code>shield</code></li>
     <li><code>background</code>: <code>themed</code>, <code>white</code>, <code>black</code>, <code>dark</code>, <code>light</code>, or <code>transparent</code></li>
     <li><code>accessory</code>: <code>none</code>, <code>glasses</code>, <code>hat</code>, <code>headphones</code>, <code>crown</code>, <code>bowtie</code>, <code>eyepatch</code>, <code>scarf</code>, <code>halo</code>, or <code>horns</code></li>
     <li><code>color</code>: <code>default</code>, <code>neon-mint</code>, <code>pastel-pink</code>, <code>crimson</code>, <code>gold</code>, or <code>deep-sea-blue</code></li>
     <li><code>expression</code>: <code>default</code>, <code>happy</code>, <code>grumpy</code>, <code>surprised</code>, <code>sleepy</code>, <code>winking</code>, <code>cool</code>, or <code>crying</code></li>
     <li><code>shape</code>: <code>square</code>, <code>circle</code>, <code>squircle</code>, <code>hexagon</code>, or <code>octagon</code></li>
-    <li><code>format</code>: <code>webp</code>, <code>png</code>, <code>jpg</code>, <code>gif</code>, or <code>svg</code></li>
+    <li><code>format</code>: output format; only <code>webp</code> is supported</li>
     <li><code>size</code>: from <code>64</code> up to <code>1024</code></li>
   </ul>
-  <p>Accessory and expression layers apply to character-style families. Object-style families such as <code>planet</code>, <code>rocket</code>, <code>paws</code>, <code>mushroom</code>, <code>cactus</code>, <code>cupcake</code>, <code>pizza</code>, and <code>icecream</code> are normalized to <code>accessory=none</code> and <code>expression=default</code>.</p>
+  <p>Accessory and expression layers apply to character-style families. Object-style families such as <code>planet</code>, <code>rocket</code>, <code>paws</code>, <code>mushroom</code>, <code>cactus</code>, <code>cupcake</code>, <code>pizza</code>, <code>icecream</code>, <code>diamond</code>, <code>coffee-cup</code>, and <code>shield</code> are normalized to <code>accessory=none</code> and <code>expression=default</code>.</p>
 </section>
 <section class="card">
   <h2>Signed Storage Links</h2>
@@ -2664,10 +2597,10 @@ avatarUrl.search = new URLSearchParams({{
 fn render_docs_html(csp_nonce: &CspNonce) -> String {
     render_page_html(
         "Docs",
-        "Reference documentation for the hashavatar.app public avatar API, storage link endpoint, metrics, and namespace-aware identity contract.",
+        "Reference documentation for the hashavatar.app public avatar API, storage link endpoint, and namespace-aware identity contract.",
         "/docs",
         "API Reference",
-        "This is the product-facing reference for the public API. The same identity, tenant, style version, hash algorithm, avatar family, style options, size, and format are intended to remain stable within a major release.",
+        "This is the product-facing reference for the public API. The same identity, tenant, style version, avatar family, style options, size, and WebP output are intended to remain stable within a major release.",
         &format!(
             r#"
 <section class="card">
@@ -2675,16 +2608,19 @@ fn render_docs_html(csp_nonce: &CspNonce) -> String {
   <ul>
     <li><code>GET /v1/avatar</code>: returns an avatar asset directly</li>
     <li><code>GET /v1/avatar/link</code>: stores the generated avatar in configured object storage and returns signed-link metadata</li>
-    <li><code>GET /avatar/&lt;kind&gt;/&lt;identity&gt;/&lt;format&gt;</code>: path-style public avatar URL</li>
+    <li><code>GET /avatar/&lt;kind&gt;/&lt;identity&gt;/webp</code>: path-style public avatar URL</li>
     <li><code>GET /docs/openapi.json</code>: machine-readable API description</li>
-    <li><code>GET /metrics</code>: basic runtime counters</li>
   </ul>
+</section>
+<section class="card">
+  <h2>Operational Endpoints</h2>
+  <p><code>GET /healthz</code> is public for load balancers and uptime checks. <code>GET /metrics</code> is loopback-only and returns <code>404</code> to non-local peers.</p>
 </section>
 <div class="content-grid">
   <section class="card">
     <h2>Namespace Support</h2>
     <p>Use <code>tenant</code> and <code>style_version</code> to keep visual identity spaces separate between products or rollout phases.</p>
-    <pre><code>GET https://{site}/v1/avatar?id=wizard@hashavatar.app&amp;tenant=acme&amp;style_version=v2&amp;algorithm=xxh3-128&amp;kind=wizard&amp;background=white&amp;accessory=hat&amp;color=deep-sea-blue&amp;expression=cool&amp;shape=squircle&amp;format=webp&amp;size=256</code></pre>
+    <pre><code>GET https://{site}/v1/avatar?id=wizard@hashavatar.app&amp;tenant=acme&amp;style_version=v2&amp;algorithm=sha512&amp;kind=wizard&amp;background=white&amp;accessory=hat&amp;color=deep-sea-blue&amp;expression=cool&amp;shape=squircle&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
     <h2>Anonymous IDs</h2>
@@ -2703,7 +2639,7 @@ fn render_docs_html(csp_nonce: &CspNonce) -> String {
 <section class="card">
   <h2>Errors</h2>
   <ul>
-    <li><code>400</code>: invalid kind, format, size, or missing identity</li>
+    <li><code>400</code>: invalid kind, unsupported algorithm or format, size, or missing identity</li>
     <li><code>408</code>: generation or storage timeout</li>
     <li><code>429</code>: rate limit exceeded</li>
     <li><code>500</code>: rendering or storage failure</li>
@@ -2825,20 +2761,12 @@ struct PathAvatar {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AvatarRequestFormat {
     Webp,
-    Png,
-    Jpeg,
-    Gif,
-    Svg,
 }
 
 impl AvatarRequestFormat {
     fn as_str(self) -> &'static str {
         match self {
             Self::Webp => "webp",
-            Self::Png => "png",
-            Self::Jpeg => "jpg",
-            Self::Gif => "gif",
-            Self::Svg => "svg",
         }
     }
 }
@@ -2855,11 +2783,7 @@ impl FromStr for AvatarRequestFormat {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.trim().to_ascii_lowercase().as_str() {
             "webp" => Ok(Self::Webp),
-            "png" => Ok(Self::Png),
-            "jpg" | "jpeg" => Ok(Self::Jpeg),
-            "gif" => Ok(Self::Gif),
-            "svg" => Ok(Self::Svg),
-            _ => Err("unsupported avatar format"),
+            _ => Err(INVALID_AVATAR_FORMAT_MESSAGE),
         }
     }
 }
@@ -2869,7 +2793,6 @@ struct AvatarRequest {
     identity: String,
     namespace_tenant: String,
     namespace_style: String,
-    algorithm: AvatarHashAlgorithm,
     kind: AvatarKind,
     background: AvatarBackground,
     accessory: AvatarAccessory,
@@ -2884,11 +2807,11 @@ struct AvatarRequest {
 
 impl AvatarRequest {
     fn from_query(query: AvatarQuery) -> Result<Self, String> {
-        let algorithm = match query.algorithm.as_deref().map(str::trim) {
-            Some(raw) if !raw.is_empty() => {
-                AvatarHashAlgorithm::from_str(raw).map_err(|error| error.to_string())?
-            }
-            _ => DEFAULT_HASH_ALGORITHM,
+        validate_hash_algorithm(query.algorithm.as_deref())?;
+        let format = match query.format.as_deref().map(str::trim) {
+            Some(raw) if !raw.is_empty() => AvatarRequestFormat::from_str(raw)
+                .map_err(|_| INVALID_AVATAR_FORMAT_MESSAGE.to_string())?,
+            _ => AvatarRequestFormat::Webp,
         };
 
         let request = Self {
@@ -2906,7 +2829,6 @@ impl AvatarRequest {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| DEFAULT_NAMESPACE_STYLE.to_string()),
-            algorithm,
             kind: query
                 .kind
                 .as_deref()
@@ -2937,11 +2859,7 @@ impl AvatarRequest {
                 .as_deref()
                 .and_then(|raw| AvatarShape::from_str(raw).ok())
                 .unwrap_or(DEFAULT_SHAPE),
-            format: query
-                .format
-                .as_deref()
-                .and_then(|raw| AvatarRequestFormat::from_str(raw).ok())
-                .unwrap_or(AvatarRequestFormat::Webp),
+            format,
             size: query.size.unwrap_or(256),
             persist: query.persist.unwrap_or(false),
             redirect: query.redirect.unwrap_or(false),
@@ -3124,12 +3042,18 @@ impl HeaderName {
 mod tests {
     use super::*;
 
+    async fn response_text(response: Response) -> String {
+        let body = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .expect("response body");
+        std::str::from_utf8(&body).expect("utf8 body").to_string()
+    }
+
     fn test_avatar_request(format: AvatarRequestFormat) -> AvatarRequest {
         AvatarRequest {
             identity: DEFAULT_ID.to_string(),
             namespace_tenant: DEFAULT_NAMESPACE_TENANT.to_string(),
             namespace_style: DEFAULT_NAMESPACE_STYLE.to_string(),
-            algorithm: DEFAULT_HASH_ALGORITHM,
             kind: AvatarKind::Cat,
             background: AvatarBackground::Themed,
             accessory: DEFAULT_ACCESSORY,
@@ -3143,40 +3067,44 @@ mod tests {
         }
     }
 
-    #[test]
-    fn rate_limiter_enforces_per_key_limit() {
+    #[tokio::test]
+    async fn rate_limiter_enforces_per_key_limit() {
         let limiter = RateLimiter::with_capacity(8);
         let key = "avatar:127.0.0.1:public:cat".to_string();
 
-        assert!(limiter.check(key.clone(), 2));
-        assert!(limiter.check(key.clone(), 2));
-        assert!(!limiter.check(key, 2));
+        assert!(limiter.check(key.clone(), 2).await);
+        assert!(limiter.check(key.clone(), 2).await);
+        assert!(!limiter.check(key, 2).await);
     }
 
-    #[test]
-    fn rate_limiter_evicts_oldest_bucket_at_capacity() {
+    #[tokio::test]
+    async fn rate_limiter_evicts_oldest_bucket_at_capacity() {
         let limiter = RateLimiter::with_capacity(2);
 
-        assert!(limiter.check("first".to_string(), 1));
-        assert!(limiter.check("second".to_string(), 1));
-        assert_eq!(limiter.len(), 2);
+        assert!(limiter.check("first".to_string(), 1).await);
+        assert!(limiter.check("second".to_string(), 1).await);
+        assert_eq!(limiter.len().await, 2);
 
-        assert!(limiter.check("third".to_string(), 1));
-        assert_eq!(limiter.len(), 2);
+        assert!(limiter.check("third".to_string(), 1).await);
+        assert_eq!(limiter.len().await, 2);
 
-        assert!(limiter.check("first".to_string(), 1));
-        assert_eq!(limiter.len(), 2);
+        assert!(limiter.check("first".to_string(), 1).await);
+        assert_eq!(limiter.len().await, 2);
     }
 
-    #[test]
-    fn rate_limiter_bounds_unique_attacker_keys() {
+    #[tokio::test]
+    async fn rate_limiter_bounds_unique_attacker_keys() {
         let limiter = RateLimiter::with_capacity(32);
 
         for idx in 0..1_000 {
-            assert!(limiter.check(format!("avatar:spoofed-{idx}:tenant-{idx}:cat"), 1));
+            assert!(
+                limiter
+                    .check(format!("avatar:spoofed-{idx}:tenant-{idx}:cat"), 1)
+                    .await
+            );
         }
 
-        assert_eq!(limiter.len(), 32);
+        assert_eq!(limiter.len().await, 32);
     }
 
     #[test]
@@ -3191,22 +3119,61 @@ mod tests {
         );
     }
 
-    #[test]
-    fn rate_limiter_recovers_from_poisoned_mutex() {
+    #[tokio::test]
+    async fn rate_limiter_uses_non_poisoning_async_mutex() {
         let limiter = RateLimiter::with_capacity(2);
         let buckets = limiter.buckets.clone();
 
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _guard = buckets.lock().expect("rate limiter lock");
+        let task = tokio::spawn(async move {
+            let _guard = buckets.lock().await;
             panic!("poison rate limiter lock");
-        }));
+        });
+        assert!(task.await.expect_err("task should panic").is_panic());
 
-        assert!(limiter.check("after-poison".to_string(), 1));
+        assert!(limiter.check("after-poison".to_string(), 1).await);
+    }
+
+    #[test]
+    fn metrics_endpoint_is_loopback_only() {
+        assert!(is_loopback_peer(
+            "127.0.0.1:8080".parse().expect("ipv4 loopback")
+        ));
+        assert!(is_loopback_peer(
+            "[::1]:8080".parse().expect("ipv6 loopback")
+        ));
+        assert!(!is_loopback_peer(
+            "198.51.100.10:8080".parse().expect("remote peer")
+        ));
+    }
+
+    #[tokio::test]
+    async fn healthz_only_exposes_liveness() {
+        let response = healthz().await.into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_text(response).await;
+        let payload: serde_json::Value =
+            serde_json::from_str(&body).expect("healthz should return json");
+
+        assert_eq!(payload, serde_json::json!({"status": "ok"}));
+        assert!(payload.get("service").is_none());
+        assert!(payload.get("s3_enabled").is_none());
+        assert!(payload.get("style_version").is_none());
     }
 
     #[test]
     fn metrics_generation_duration_saturates_at_u64_max() {
         let metrics = Metrics::default();
+
+        metrics
+            .generation_millis_total
+            .store(u64::MAX - 10, Ordering::Relaxed);
+        metrics.observe_generation(Duration::from_millis(25));
+
+        assert_eq!(
+            metrics.generation_millis_total.load(Ordering::Relaxed),
+            u64::MAX
+        );
 
         metrics.observe_generation(Duration::from_secs(u64::MAX));
 
@@ -3224,6 +3191,54 @@ mod tests {
         assert!(policy.contains("style-src 'self' 'nonce-testnonce'"));
         assert!(policy.contains("script-src 'self' 'nonce-testnonce'"));
         assert!(!policy.contains("unsafe-inline"));
+    }
+
+    #[test]
+    fn security_headers_include_modern_isolation_policy() {
+        let mut html_response = Html("ok").into_response();
+        apply_security_headers(
+            html_response.headers_mut(),
+            &content_security_policy(&CspNonce("testnonce".to_string())),
+            true,
+        );
+
+        assert_eq!(
+            html_response
+                .headers()
+                .get("cross-origin-resource-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some("cross-origin")
+        );
+        assert_eq!(
+            html_response
+                .headers()
+                .get("cross-origin-opener-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some("same-origin")
+        );
+        assert_eq!(
+            html_response
+                .headers()
+                .get("strict-transport-security")
+                .and_then(|value| value.to_str().ok()),
+            Some("max-age=31536000; includeSubDomains")
+        );
+
+        let mut image_headers = cache_headers("\"etag\"");
+        apply_security_headers(
+            &mut image_headers,
+            &content_security_policy(&CspNonce("testnonce".to_string())),
+            false,
+        );
+
+        assert_eq!(
+            image_headers
+                .get("cross-origin-resource-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some("cross-origin")
+        );
+        assert!(!image_headers.contains_key("cross-origin-opener-policy"));
+        assert!(!image_headers.contains_key("strict-transport-security"));
     }
 
     #[test]
@@ -3273,12 +3288,39 @@ mod tests {
         assert!(html.contains(
             r#"value="planet" data-identity="planet@hashavatar.app" data-supports-layers="false""#
         ));
+        assert!(html.contains(
+            r#"value="bear" data-identity="bear@hashavatar.app" data-supports-layers="true""#
+        ));
+        assert!(html.contains(
+            r#"value="coffee-cup" data-identity="coffee-cup@hashavatar.app" data-supports-layers="false""#
+        ));
         assert!(html.contains("syncStyleLayerAvailability();"));
         assert!(html.contains("accessoryEl.disabled = !supportsLayers;"));
         assert!(html.contains("accessory: accessoryEl.value"));
         assert!(html.contains("color: colorEl.value"));
         assert!(html.contains("expression: expressionEl.value"));
         assert!(html.contains("shape: shapeEl.value"));
+        assert!(!html.contains("algorithm-options"));
+        assert!(!html.contains(r#"id="format""#));
+        assert!(html.contains(r#"algorithm: "sha512""#));
+        assert!(html.contains(r#"format: "webp""#));
+        assert!(!html.contains("id: preset.id"));
+        assert!(html.contains(r#"el.addEventListener("input", scheduleFullRefresh);"#));
+        assert!(html.contains("refreshNowWithPresets();"));
+        assert!(!html.contains(r#"el.addEventListener("input", renderPresetPage);"#));
+    }
+
+    #[test]
+    fn public_docs_do_not_advertise_metrics_as_public_api() {
+        let nonce = CspNonce("testnonce".to_string());
+        let index_html = render_index_html(&nonce, false);
+        let docs_html = render_docs_html(&nonce);
+        let openapi = openapi_document();
+
+        assert!(!index_html.contains(r#"href="/metrics""#));
+        assert!(docs_html.contains("loopback-only"));
+        assert!(docs_html.contains("returns <code>404</code> to non-local peers"));
+        assert!(openapi["paths"].get("/metrics").is_none());
     }
 
     #[test]
@@ -3375,16 +3417,75 @@ mod tests {
         );
     }
 
+    #[test]
+    fn invalid_algorithm_error_does_not_reflect_input() {
+        let reflected = "sha512<script>alert(1)</script>";
+        let error = AvatarRequest::from_query(AvatarQuery {
+            algorithm: Some(reflected.to_string()),
+            id: Some(DEFAULT_ID.to_string()),
+            kind: None,
+            background: None,
+            accessory: None,
+            color: None,
+            expression: None,
+            shape: None,
+            format: None,
+            size: None,
+            tenant: None,
+            style_version: None,
+            persist: None,
+            redirect: None,
+        })
+        .expect_err("invalid algorithm should be rejected");
+
+        assert_eq!(error, INVALID_HASH_ALGORITHM_MESSAGE);
+        assert!(!error.contains(reflected));
+        assert!(!error.contains("<script>"));
+    }
+
+    #[tokio::test]
+    async fn og_namespace_error_does_not_reflect_input() {
+        let reflected = "public<script>alert(1)</script>";
+        let response = og_png(Query(OgQuery {
+            id: Some(DEFAULT_ID.to_string()),
+            tenant: Some(reflected.to_string()),
+            style_version: Some(DEFAULT_NAMESPACE_STYLE.to_string()),
+            kind: None,
+        }))
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_text(response).await;
+
+        assert_eq!(body, INVALID_NAMESPACE_MESSAGE);
+        assert!(!body.contains(reflected));
+        assert!(!body.contains("<script>"));
+    }
+
+    #[test]
+    fn draw_circle_uses_wide_arithmetic_for_large_radius() {
+        assert!(is_inside_circle(46_341, 0, 46_341));
+        assert!(is_inside_circle(46_341, 46_341, 65_537));
+        assert!(!is_inside_circle(46_341, 46_341, 46_341));
+        assert!(!is_inside_circle(0, 0, -1));
+    }
+
+    #[test]
+    fn overlay_reports_out_of_bounds_composition() {
+        let mut canvas = RgbaImage::from_pixel(16, 16, Rgba([0, 0, 0, 0]));
+        let avatar = RgbaImage::from_pixel(8, 8, Rgba([255, 255, 255, 255]));
+
+        assert!(overlay(&mut canvas, &avatar, 4, 4).is_ok());
+        assert!(overlay(&mut canvas, &avatar, 12, 12).is_err());
+    }
+
     #[tokio::test]
     async fn internal_error_does_not_expose_details() {
         let response = internal_error("s3 bucket hashavatar-private in eu-north-1 denied");
 
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
-        let body = axum::body::to_bytes(response.into_body(), 1024)
-            .await
-            .expect("internal error body");
-        let body = std::str::from_utf8(&body).expect("utf8 body");
+        let body = response_text(response).await;
 
         assert_eq!(body, INTERNAL_ERROR_MESSAGE);
         assert!(!body.contains("hashavatar-private"));
@@ -3392,34 +3493,63 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_svg_with_hashavatar_0_11() {
-        let request = test_avatar_request(AvatarRequestFormat::Svg);
-        let asset = build_avatar_asset(&request).expect("svg avatar should render");
-        let body = std::str::from_utf8(&asset.body).expect("svg should be utf8");
+    fn build_avatar_asset_renders_webp_with_hashavatar_0_12() {
+        let request = test_avatar_request(AvatarRequestFormat::Webp);
+        let asset = build_avatar_asset(&request).expect("webp avatar should render");
 
-        assert_eq!(asset.content_type, "image/svg+xml");
-        assert!(body.starts_with("<svg "));
+        assert_eq!(asset.content_type, "image/webp");
+        assert!(asset.body.starts_with(b"RIFF"));
     }
 
     #[test]
-    fn build_avatar_asset_supports_all_hash_algorithms() {
-        let mut object_keys = std::collections::BTreeSet::new();
+    fn avatar_request_rejects_non_sha512_algorithm() {
+        let error = AvatarRequest::from_query(AvatarQuery {
+            algorithm: Some("blake3".to_string()),
+            id: Some(DEFAULT_ID.to_string()),
+            kind: None,
+            background: None,
+            accessory: None,
+            color: None,
+            expression: None,
+            shape: None,
+            format: None,
+            size: None,
+            tenant: None,
+            style_version: None,
+            persist: None,
+            redirect: None,
+        })
+        .expect_err("non-sha512 algorithm should be rejected");
 
-        for algorithm in AvatarHashAlgorithm::ALL.iter().copied() {
-            let mut request = test_avatar_request(AvatarRequestFormat::Svg);
-            request.algorithm = algorithm;
+        assert_eq!(error, INVALID_HASH_ALGORITHM_MESSAGE);
+    }
 
-            let asset = build_avatar_asset(&request).expect("algorithm should render");
+    #[test]
+    fn avatar_request_rejects_non_webp_format() {
+        let error = AvatarRequest::from_query(AvatarQuery {
+            algorithm: None,
+            id: Some(DEFAULT_ID.to_string()),
+            kind: None,
+            background: None,
+            accessory: None,
+            color: None,
+            expression: None,
+            shape: None,
+            format: Some("svg".to_string()),
+            size: None,
+            tenant: None,
+            style_version: None,
+            persist: None,
+            redirect: None,
+        })
+        .expect_err("non-webp format should be rejected");
 
-            assert_eq!(asset.content_type, "image/svg+xml");
-            assert!(asset.object_key.contains(algorithm.as_str()));
-            assert!(object_keys.insert(asset.object_key));
-        }
+        assert_eq!(error, INVALID_AVATAR_FORMAT_MESSAGE);
     }
 
     #[test]
     fn build_avatar_asset_supports_explicit_style_layers() {
-        let base = test_avatar_request(AvatarRequestFormat::Svg);
+        let base = test_avatar_request(AvatarRequestFormat::Webp);
         let base_asset = build_avatar_asset(&base).expect("base avatar should render");
 
         let mut request = base;
@@ -3430,7 +3560,7 @@ mod tests {
 
         let styled_asset = build_avatar_asset(&request).expect("styled avatar should render");
 
-        assert_eq!(styled_asset.content_type, "image/svg+xml");
+        assert_eq!(styled_asset.content_type, "image/webp");
         assert_ne!(base_asset.cache_key, styled_asset.cache_key);
         assert_ne!(base_asset.object_key, styled_asset.object_key);
         assert!(
@@ -3442,8 +3572,8 @@ mod tests {
 
     #[test]
     fn build_avatar_asset_normalizes_unsupported_accessory_layers() {
-        let mut unsupported = test_avatar_request(AvatarRequestFormat::Svg);
-        unsupported.kind = AvatarKind::Planet;
+        let mut unsupported = test_avatar_request(AvatarRequestFormat::Webp);
+        unsupported.kind = AvatarKind::CoffeeCup;
         unsupported.accessory = AvatarAccessory::Glasses;
         unsupported.color = AvatarColor::Gold;
         unsupported.expression = AvatarExpression::Happy;
@@ -3463,13 +3593,13 @@ mod tests {
         assert!(
             unsupported_asset
                 .object_key
-                .contains("/planet/themed/none/gold/default/circle/")
+                .contains("/coffee-cup/themed/none/gold/default/circle/")
         );
     }
 
     #[test]
     fn build_avatar_asset_rejects_oversized_namespace() {
-        let mut request = test_avatar_request(AvatarRequestFormat::Svg);
+        let mut request = test_avatar_request(AvatarRequestFormat::Webp);
         request.namespace_tenant = "x".repeat(MAX_NAMESPACE_COMPONENT_BYTES + 1);
 
         let error = match build_avatar_asset(&request) {
@@ -3482,7 +3612,7 @@ mod tests {
 
     #[test]
     fn build_avatar_asset_rejects_path_like_namespace() {
-        let mut request = test_avatar_request(AvatarRequestFormat::Svg);
+        let mut request = test_avatar_request(AvatarRequestFormat::Webp);
         request.namespace_tenant = "../admin".to_string();
 
         let error = match build_avatar_asset(&request) {
@@ -3495,7 +3625,7 @@ mod tests {
 
     #[test]
     fn build_avatar_asset_rejects_oversized_identity() {
-        let mut request = test_avatar_request(AvatarRequestFormat::Svg);
+        let mut request = test_avatar_request(AvatarRequestFormat::Webp);
         request.identity = "x".repeat(MAX_ID_BYTES + 1);
 
         let error = match build_avatar_asset(&request) {
@@ -3508,17 +3638,32 @@ mod tests {
 
     #[test]
     fn build_avatar_asset_allows_email_identity() {
-        let mut request = test_avatar_request(AvatarRequestFormat::Svg);
+        let mut request = test_avatar_request(AvatarRequestFormat::Webp);
         request.identity = "person@example.com".to_string();
 
         let asset = build_avatar_asset(&request).expect("email-shaped identity should render");
 
-        assert_eq!(asset.content_type, "image/svg+xml");
+        assert_eq!(asset.content_type, "image/webp");
+    }
+
+    #[test]
+    fn build_avatar_asset_allows_reported_identity_inputs() {
+        for identity in [
+            "dsdssLOLhield@hashavatar.appdsdssdasas",
+            "asjkjhsajkashjL\u{00d6}OLALALALAL",
+        ] {
+            let mut request = test_avatar_request(AvatarRequestFormat::Webp);
+            request.identity = identity.to_string();
+
+            let asset = build_avatar_asset(&request).expect("reported identity should render");
+
+            assert_eq!(asset.content_type, "image/webp");
+        }
     }
 
     #[test]
     fn object_key_uses_full_sha256_digest() {
-        let request = test_avatar_request(AvatarRequestFormat::Svg);
+        let request = test_avatar_request(AvatarRequestFormat::Webp);
         let asset = build_avatar_asset(&request).expect("avatar should render");
         let filename = asset
             .object_key
@@ -3526,8 +3671,8 @@ mod tests {
             .next()
             .expect("object key filename");
         let digest = filename
-            .strip_suffix(".svg")
-            .expect("svg object key suffix");
+            .strip_suffix(".webp")
+            .expect("webp object key suffix");
 
         assert_eq!(digest.len(), 64);
         assert!(digest.bytes().all(|byte| byte.is_ascii_hexdigit()));

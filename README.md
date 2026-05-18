@@ -11,7 +11,7 @@ audit, SBOM, reproducibility, smoke, and GitHub CodeQL default setup checks.
 
 ## Current Status
 
-The current service version is `0.11.0`.
+The current service version is `0.12.0`.
 
 Implemented now:
 
@@ -23,12 +23,13 @@ Implemented now:
 - OpenAPI metadata at `/docs/openapi.json`.
 - Deterministic output for stable CDN-backed avatar URLs.
 - Namespace-aware tenant and style-version parameters.
-- Selectable identity hash algorithms: `SHA-512`, `BLAKE3`, and `XXH3`.
-- `WebP`, `PNG`, `JPEG`, `GIF`, and `SVG` responses.
-- Avatar families from `hashavatar 0.11.0`: `cat`, `dog`, `robot`, `fox`,
+- SHA-512 identity hashing.
+- WebP avatar responses.
+- Avatar families from `hashavatar 0.12.0`: `cat`, `dog`, `robot`, `fox`,
   `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`,
   `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`,
-  `pizza`, `icecream`, `octopus`, and `knight`.
+  `pizza`, `icecream`, `octopus`, `knight`, `bear`, `penguin`, `dragon`,
+  `ninja`, `astronaut`, `diamond`, `coffee-cup`, and `shield`.
 - Background modes: `themed`, `white`, `black`, `dark`, `light`, and
   `transparent`.
 - Bounded in-memory rate limiter storage.
@@ -55,7 +56,7 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Service license | `EUPL-1.2` |
-| Renderer crate | `hashavatar 0.11.0` |
+| Renderer crate | `hashavatar 0.12.0` |
 | MSRV | Rust `1.95.0` |
 | Runtime container | Wolfi |
 | HTTP framework | `axum` |
@@ -63,7 +64,7 @@ Intentionally external:
 | Rate limiter | Bounded LRU map |
 | Forwarded IP policy | Trusted proxies only |
 | Internal errors | Detailed logs, generic client body |
-| Security headers | CSP, permissions policy, referrer policy, `nosniff`, frame denial |
+| Security headers | CSP, permissions policy, referrer policy, `nosniff`, frame denial, CORP, COOP, HSTS |
 | Release evidence | fmt, metadata, docs, clippy, tests, deny, audit, smoke, SBOM, reproducibility |
 | Code scanning | GitHub CodeQL default setup |
 
@@ -87,22 +88,22 @@ Important query parameters:
 | `id` | `cat@hashavatar.app` | Public identity input for deterministic rendering. |
 | `tenant` | `public` | Namespace tenant for isolation. |
 | `style_version` | `v2` | Namespace style rollout version. |
-| `algorithm` | `sha512` | Identity hash algorithm: `sha512`, `blake3`, or `xxh3-128`. |
+| `algorithm` | `sha512` | Identity hash algorithm. Only `sha512` is supported. |
 | `kind` | `cat` | Avatar family. |
 | `background` | `themed` | Background mode. |
 | `accessory` | `none` | Optional style layer: `none`, `glasses`, `hat`, `headphones`, `crown`, `bowtie`, `eyepatch`, `scarf`, `halo`, or `horns`. |
 | `color` | `default` | Accent color: `default`, `neon-mint`, `pastel-pink`, `crimson`, `gold`, or `deep-sea-blue`. |
 | `expression` | `default` | Facial expression: `default`, `happy`, `grumpy`, `surprised`, `sleepy`, `winking`, `cool`, or `crying`. |
 | `shape` | `square` | Avatar crop shape: `square`, `circle`, `squircle`, `hexagon`, or `octagon`. |
-| `format` | `webp` | `webp`, `png`, `jpg`, `jpeg`, `gif`, or `svg`. |
+| `format` | `webp` | Output format. Only `webp` is supported for avatar responses. |
 | `size` | `256` | Square image size in pixels. |
 | `persist` | `false` | Store through configured S3-compatible backend when enabled. |
 
 ### Path Avatar
 
 ```text
-GET /avatar/cat/cat@hashavatar.app/svg
-GET /avatar/fox/fox@hashavatar.app/png
+GET /avatar/cat/cat@hashavatar.app/webp
+GET /avatar/fox/fox@hashavatar.app/webp
 ```
 
 Path requests use the default tenant, style version, themed background, default
@@ -140,15 +141,15 @@ object-storage keys.
 
 Accessory and expression layers apply to character-style avatar families.
 Object-style families such as `planet`, `rocket`, `paws`, `mushroom`,
-`cactus`, `cupcake`, `pizza`, and `icecream` are normalized to
-`accessory=none` and `expression=default`.
+`cactus`, `cupcake`, `pizza`, `icecream`, `diamond`, `coffee-cup`, and
+`shield` are normalized to `accessory=none` and `expression=default`.
 
 ## Determinism And Caching
 
 Avatar responses are deterministic for the tuple:
 
 ```text
-tenant + style_version + algorithm + id + kind + background + accessory + color + expression + shape + format + size
+tenant + style_version + sha512 + id + kind + background + accessory + color + expression + shape + webp + size
 ```
 
 This makes aggressive edge caching appropriate. Avatar responses include:
@@ -163,7 +164,6 @@ The recommended production strategy is:
 - use a stable internal user id or one-way hash as `id`
 - use `tenant` for product or environment isolation
 - use `style_version` for visual rollouts
-- use `algorithm` when comparing the SHA-512, BLAKE3, and XXH3 identity modes from the renderer crate
 - change `style_version` intentionally when cached visuals should change
 
 ## Running Locally
@@ -244,8 +244,8 @@ The repository includes:
 - clippy with warnings denied
 - unit tests for rate limiting, trusted proxy handling, renderer validation,
   and internal error disclosure behavior
-- local HTTP smoke tests for health, SVG/PNG rendering, security headers, and
-  invalid namespace rejection
+- local HTTP smoke tests for health, WebP rendering, security headers,
+  unsupported algorithm/format rejection, and invalid namespace rejection
 - local Podman smoke tests for the Wolfi image when
   `HASHAVATAR_API_GATE_PODMAN=1` is set
 - `cargo deny` dependency and license policy

@@ -61,39 +61,51 @@ if [ "${status:-}" != "200" ]; then
 fi
 
 grep -q '"status":"ok"' "$TMP_DIR/health.json"
-grep -q '"service":"hashavatar-api"' "$TMP_DIR/health.json"
+if grep -Eq '"(service|s3_enabled|style_version)"' "$TMP_DIR/health.json"; then
+    echo "local smoke failed: healthz exposed deployment details" >&2
+    cat "$TMP_DIR/health.json" >&2
+    exit 1
+fi
 
-curl -sSf -D "$TMP_DIR/svg.headers" \
-    "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&kind=cat&background=themed&accessory=glasses&color=gold&expression=happy&shape=circle&format=svg&size=256" \
-    -o "$TMP_DIR/avatar.svg"
-grep -q '^<svg ' "$TMP_DIR/avatar.svg"
-grep -qi '^content-type: image/svg+xml' "$TMP_DIR/svg.headers"
-grep -qi '^x-content-type-options: nosniff' "$TMP_DIR/svg.headers"
-grep -qi '^x-frame-options: DENY' "$TMP_DIR/svg.headers"
-grep -qi '^referrer-policy: no-referrer' "$TMP_DIR/svg.headers"
-grep -qi '^content-security-policy:' "$TMP_DIR/svg.headers"
+curl -sSf -D "$TMP_DIR/webp.headers" \
+    "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&algorithm=sha512&kind=cat&background=themed&accessory=glasses&color=gold&expression=happy&shape=circle&format=webp&size=256" \
+    -o "$TMP_DIR/avatar.webp"
+grep -q '^RIFF' "$TMP_DIR/avatar.webp"
+grep -qi '^content-type: image/webp' "$TMP_DIR/webp.headers"
+grep -qi '^x-content-type-options: nosniff' "$TMP_DIR/webp.headers"
+grep -qi '^x-frame-options: DENY' "$TMP_DIR/webp.headers"
+grep -qi '^referrer-policy: no-referrer' "$TMP_DIR/webp.headers"
+grep -qi '^cross-origin-resource-policy: cross-origin' "$TMP_DIR/webp.headers"
+grep -qi '^content-security-policy:' "$TMP_DIR/webp.headers"
 
 curl -sSf \
-    "http://127.0.0.1:$port/v1/avatar?id=planet@hashavatar.app&kind=planet&background=themed&accessory=glasses&color=gold&expression=happy&shape=circle&format=svg&size=256" \
-    -o "$TMP_DIR/unsupported-accessory.svg"
-grep -q '^<svg ' "$TMP_DIR/unsupported-accessory.svg"
+    "http://127.0.0.1:$port/v1/avatar?id=planet@hashavatar.app&algorithm=sha512&kind=planet&background=themed&accessory=glasses&color=gold&expression=happy&shape=circle&format=webp&size=256" \
+    -o "$TMP_DIR/unsupported-accessory.webp"
+grep -q '^RIFF' "$TMP_DIR/unsupported-accessory.webp"
 
-curl -sSf -D "$TMP_DIR/png.headers" \
-    "http://127.0.0.1:$port/v1/avatar?id=robot@hashavatar.app&kind=robot&background=white&format=png&size=128" \
-    -o "$TMP_DIR/avatar.png"
-grep -qi '^content-type: image/png' "$TMP_DIR/png.headers"
-test -s "$TMP_DIR/avatar.png"
+bad_format_status="$(
+    curl -sS -o "$TMP_DIR/bad-format.txt" -w '%{http_code}' \
+        "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&format=svg"
+)"
+if [ "$bad_format_status" != "400" ]; then
+    echo "local smoke failed: svg format returned $bad_format_status, expected 400" >&2
+    exit 1
+fi
+grep -q 'unsupported avatar format: expected webp' "$TMP_DIR/bad-format.txt"
 
-for algorithm in sha512 blake3 xxh3-128; do
-    curl -sSf \
-        "http://127.0.0.1:$port/v1/avatar?id=wizard@hashavatar.app&algorithm=$algorithm&kind=wizard&background=white&format=svg&size=128" \
-        -o "$TMP_DIR/avatar-$algorithm.svg"
-    grep -q '^<svg ' "$TMP_DIR/avatar-$algorithm.svg"
-done
+bad_algorithm_status="$(
+    curl -sS -o "$TMP_DIR/bad-algorithm.txt" -w '%{http_code}' \
+        "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&algorithm=blake3&format=webp"
+)"
+if [ "$bad_algorithm_status" != "400" ]; then
+    echo "local smoke failed: blake3 algorithm returned $bad_algorithm_status, expected 400" >&2
+    exit 1
+fi
+grep -q 'unsupported hash algorithm: expected sha512' "$TMP_DIR/bad-algorithm.txt"
 
 bad_status="$(
     curl -sS -o "$TMP_DIR/bad-tenant.txt" -w '%{http_code}' \
-        "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&tenant=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx&format=svg"
+        "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&tenant=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx&format=webp"
 )"
 if [ "$bad_status" != "400" ]; then
     echo "local smoke failed: oversized tenant returned $bad_status, expected 400" >&2

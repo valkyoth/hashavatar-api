@@ -233,11 +233,11 @@ fn apply_security_headers(headers: &mut HeaderMap, csp: &str, is_html_response: 
             header::HeaderName::from_static("cross-origin-opener-policy"),
             HeaderValue::from_static("same-origin"),
         );
-        headers.insert(
-            header::HeaderName::from_static("strict-transport-security"),
-            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
-        );
     }
+    headers.insert(
+        header::HeaderName::from_static("strict-transport-security"),
+        HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+    );
 }
 
 async fn require_loopback_peer(
@@ -252,7 +252,7 @@ async fn require_loopback_peer(
 }
 
 fn is_loopback_peer(peer_addr: SocketAddr) -> bool {
-    peer_addr.ip().is_loopback()
+    normalize_ip(peer_addr.ip()).is_loopback()
 }
 
 fn secure_rng_failure(error: getrandom::Error) -> Response {
@@ -429,82 +429,51 @@ async fn og_png(
     Query(query): Query<OgQuery>,
 ) -> Response {
     if let Err(response) =
-        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::Avatar).await
+        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::OgImage).await
     {
         return response;
     }
 
-    let title_id = query.id.unwrap_or_else(|| DEFAULT_ID.to_string());
-    let tenant = query.tenant.as_deref().unwrap_or(DEFAULT_NAMESPACE_TENANT);
+    let title_id = query
+        .id
+        .map(|value| value.trim().to_string())
+        .unwrap_or_else(|| DEFAULT_ID.to_string());
+    if let Err(message) = validate_identity(&title_id) {
+        return bad_request(&message);
+    }
+
+    let tenant = query
+        .tenant
+        .as_deref()
+        .unwrap_or(DEFAULT_NAMESPACE_TENANT)
+        .to_string();
     let style_version = query
         .style_version
         .as_deref()
-        .unwrap_or(DEFAULT_NAMESPACE_STYLE);
-    if validate_namespace_component("tenant", tenant).is_err()
-        || validate_namespace_component("style_version", style_version).is_err()
+        .unwrap_or(DEFAULT_NAMESPACE_STYLE)
+        .to_string();
+    if validate_namespace_component("tenant", &tenant).is_err()
+        || validate_namespace_component("style_version", &style_version).is_err()
     {
         return bad_request(INVALID_NAMESPACE_MESSAGE);
     }
-    let namespace = match AvatarNamespace::new(tenant, style_version) {
-        Ok(namespace) => namespace,
-        Err(_) => return bad_request(INVALID_NAMESPACE_MESSAGE),
-    };
-    let spec = AvatarSpec::new(220, 220, 0).expect("Open Graph avatar spec should be valid");
-
-    let mut canvas: RgbaImage = ImageBuffer::from_pixel(1200, 630, Rgba([251, 246, 238, 255]));
-    draw_rect(&mut canvas, 0, 0, 1200, 630, Rgba([242, 236, 228, 255]));
-    draw_circle(&mut canvas, 160, 140, 180, Rgba([255, 214, 170, 180]));
-    draw_circle(&mut canvas, 1030, 500, 150, Rgba([217, 122, 66, 70]));
 
     let lead_kind = query
         .kind
         .as_deref()
         .and_then(|raw| AvatarKind::from_str(raw).ok())
         .unwrap_or(AvatarKind::Monster);
-    for (idx, kind) in [lead_kind, AvatarKind::Robot, AvatarKind::Ghost]
-        .into_iter()
-        .enumerate()
-    {
-        let avatar = match render_avatar_for_namespace(
-            spec,
-            namespace,
-            &title_id,
-            AvatarOptions::new(
-                kind,
-                if idx == 1 {
-                    AvatarBackground::White
-                } else {
-                    AvatarBackground::Themed
-                },
-            ),
-        ) {
-            Ok(avatar) => avatar,
-            Err(_) => return bad_request(INVALID_AVATAR_RENDER_MESSAGE),
-        };
-        if let Err(error) = overlay(&mut canvas, &avatar, 110 + idx as u32 * 260, 180) {
-            return internal_error(error);
-        }
-    }
 
-    let bytes = {
-        use image::ImageEncoder;
-        let mut buf = Vec::new();
-        let result = image::codecs::png::PngEncoder::new(&mut buf)
-            .write_image(
-                canvas.as_raw(),
-                canvas.width(),
-                canvas.height(),
-                image::ExtendedColorType::Rgba8,
-            )
-            .map_err(|error| {
-                tracing::error!(%error, "Open Graph PNG encoding failed");
-                StatusCode::INTERNAL_SERVER_ERROR
-            });
-        if let Err(status) = result {
-            return status.into_response();
-        }
-        buf
-    };
+    let render = tokio::task::spawn_blocking(move || {
+        build_og_png_bytes(&title_id, &tenant, &style_version, lead_kind)
+    });
+    let bytes =
+        match tokio::time::timeout(Duration::from_millis(AVATAR_TIMEOUT_MS * 3), render).await {
+            Ok(Ok(Ok(bytes))) => bytes,
+            Ok(Ok(Err(error))) => return error.into_response(),
+            Ok(Err(error)) => return internal_error(error),
+            Err(_) => return request_timeout("Open Graph image generation timed out"),
+        };
 
     (
         StatusCode::OK,
@@ -515,6 +484,71 @@ async fn og_png(
         bytes,
     )
         .into_response()
+}
+
+enum OgPngError {
+    BadRequest(&'static str),
+    Internal(String),
+}
+
+impl OgPngError {
+    fn into_response(self) -> Response {
+        match self {
+            Self::BadRequest(message) => bad_request(message),
+            Self::Internal(message) => internal_error(message),
+        }
+    }
+}
+
+fn build_og_png_bytes(
+    title_id: &str,
+    tenant: &str,
+    style_version: &str,
+    lead_kind: AvatarKind,
+) -> Result<Vec<u8>, OgPngError> {
+    let namespace = AvatarNamespace::new(tenant, style_version)
+        .map_err(|_| OgPngError::BadRequest(INVALID_NAMESPACE_MESSAGE))?;
+    let spec = AvatarSpec::new(220, 220, 0)
+        .map_err(|_| OgPngError::BadRequest(INVALID_AVATAR_RENDER_MESSAGE))?;
+
+    let mut canvas: RgbaImage = ImageBuffer::from_pixel(1200, 630, Rgba([251, 246, 238, 255]));
+    draw_rect(&mut canvas, 0, 0, 1200, 630, Rgba([242, 236, 228, 255]));
+    draw_circle(&mut canvas, 160, 140, 180, Rgba([255, 214, 170, 180]));
+    draw_circle(&mut canvas, 1030, 500, 150, Rgba([217, 122, 66, 70]));
+
+    for (idx, kind) in [lead_kind, AvatarKind::Robot, AvatarKind::Ghost]
+        .into_iter()
+        .enumerate()
+    {
+        let avatar = render_avatar_for_namespace(
+            spec,
+            namespace,
+            title_id,
+            AvatarOptions::new(
+                kind,
+                if idx == 1 {
+                    AvatarBackground::White
+                } else {
+                    AvatarBackground::Themed
+                },
+            ),
+        )
+        .map_err(|_| OgPngError::BadRequest(INVALID_AVATAR_RENDER_MESSAGE))?;
+        overlay(&mut canvas, &avatar, 110 + idx as u32 * 260, 180)
+            .map_err(|error| OgPngError::Internal(error.to_string()))?;
+    }
+
+    use image::ImageEncoder;
+    let mut buf = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut buf)
+        .write_image(
+            canvas.as_raw(),
+            canvas.width(),
+            canvas.height(),
+            image::ExtendedColorType::Rgba8,
+        )
+        .map_err(|error| OgPngError::Internal(error.to_string()))?;
+    Ok(buf)
 }
 
 async fn healthz() -> impl IntoResponse {
@@ -530,6 +564,7 @@ async fn healthz() -> impl IntoResponse {
 enum RateLimitRoute {
     Avatar,
     StorageLink,
+    OgImage,
 }
 
 impl RateLimitRoute {
@@ -537,6 +572,7 @@ impl RateLimitRoute {
         match self {
             Self::Avatar => "avatar",
             Self::StorageLink => "storage-link",
+            Self::OgImage => "og-image",
         }
     }
 
@@ -544,6 +580,7 @@ impl RateLimitRoute {
         match self {
             Self::Avatar => 240,
             Self::StorageLink => 30,
+            Self::OgImage => 60,
         }
     }
 }
@@ -630,6 +667,7 @@ impl TrustedProxies {
     }
 
     fn contains(&self, ip: IpAddr) -> bool {
+        let ip = normalize_ip(ip);
         self.networks.iter().any(|network| network.contains(&ip))
     }
 }
@@ -647,7 +685,7 @@ impl RateLimiter {
         }
     }
 
-    async fn check(&self, key: String, limit: u32) -> bool {
+    async fn check(&self, key: String, limit: u32) -> Result<(), u64> {
         let now = Instant::now();
         let mut buckets = self.buckets.lock().await;
         let bucket = buckets.bucket_for(key, now);
@@ -656,10 +694,12 @@ impl RateLimiter {
             bucket.count = 0;
         }
         if bucket.count >= limit {
-            return false;
+            let elapsed = now.duration_since(bucket.started_at);
+            let remaining = RATE_LIMIT_WINDOW.saturating_sub(elapsed).as_secs().max(1);
+            return Err(remaining);
         }
         bucket.count += 1;
-        true
+        Ok(())
     }
 
     #[cfg(test)]
@@ -760,16 +800,22 @@ async fn enforce_limits(
 ) -> Result<(), Response> {
     let ip = client_ip(headers, peer_ip, &state.trusted_proxies);
     let key = rate_limit_key(route, &ip);
-    let allowed = state.rate_limiter.check(key, route.limit()).await;
-    if allowed {
-        Ok(())
-    } else {
-        state.metrics.limited_total.fetch_add(1, Ordering::Relaxed);
-        Err((
-            StatusCode::TOO_MANY_REQUESTS,
-            "rate limit exceeded, please retry shortly".to_string(),
-        )
-            .into_response())
+    match state.rate_limiter.check(key, route.limit()).await {
+        Ok(()) => Ok(()),
+        Err(retry_after_secs) => {
+            state.metrics.limited_total.fetch_add(1, Ordering::Relaxed);
+            let mut response = (
+                StatusCode::TOO_MANY_REQUESTS,
+                "rate limit exceeded, please retry shortly".to_string(),
+            )
+                .into_response();
+            response.headers_mut().insert(
+                header::RETRY_AFTER,
+                HeaderValue::from_str(&retry_after_secs.to_string())
+                    .unwrap_or_else(|_| HeaderValue::from_static("60")),
+            );
+            Err(response)
+        }
     }
 }
 
@@ -778,6 +824,7 @@ fn rate_limit_key(route: RateLimitRoute, ip: &str) -> String {
 }
 
 fn client_ip(headers: &HeaderMap, peer_ip: IpAddr, trusted_proxies: &TrustedProxies) -> String {
+    let peer_ip = normalize_ip(peer_ip);
     if !trusted_proxies.contains(peer_ip) {
         return peer_ip.to_string();
     }
@@ -795,7 +842,7 @@ fn client_ip(headers: &HeaderMap, peer_ip: IpAddr, trusted_proxies: &TrustedProx
         .and_then(|value| value.to_str().ok())
     {
         for candidate in value.split(',').rev() {
-            if let Ok(ip) = candidate.trim().parse::<IpAddr>()
+            if let Ok(ip) = candidate.trim().parse::<IpAddr>().map(normalize_ip)
                 && !trusted_proxies.contains(ip)
             {
                 return ip.to_string();
@@ -810,6 +857,17 @@ fn single_ip_header(headers: &HeaderMap, header_name: &'static str) -> Option<Ip
         .get(header_name)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.trim().parse::<IpAddr>().ok())
+        .map(normalize_ip)
+}
+
+fn normalize_ip(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(ipv6) => ipv6
+            .to_ipv4_mapped()
+            .map(IpAddr::V4)
+            .unwrap_or(IpAddr::V6(ipv6)),
+        IpAddr::V4(_) => ip,
+    }
 }
 
 async fn query_avatar(
@@ -823,9 +881,12 @@ async fn query_avatar(
         Err(message) => return bad_request(&message),
     };
 
-    if let Err(response) =
-        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::Avatar).await
-    {
+    let route = if request.persist {
+        RateLimitRoute::StorageLink
+    } else {
+        RateLimitRoute::Avatar
+    };
+    if let Err(response) = enforce_limits(&state, &headers, peer_addr.ip(), route).await {
         return response;
     }
     serve_avatar(state, request).await
@@ -981,7 +1042,7 @@ async fn serve_avatar_link(state: AppState, request: AvatarRequest) -> Response 
                 signed_url: signed.signed_url,
                 expires_in_seconds: storage.presign_ttl.as_secs(),
                 content_type: asset.content_type.to_string(),
-                cache_key: asset.cache_key,
+                cache_key: sha256_hex(&asset.cache_key),
             }),
         )
             .into_response(),
@@ -1073,13 +1134,15 @@ fn cache_headers(etag: &str) -> HeaderMap {
 }
 
 fn etag_for(cache_key: &str) -> String {
-    let digest = Sha256::digest(cache_key.as_bytes());
-    let mut encoded = String::with_capacity(66);
-    encoded.push('"');
+    format!("\"{}\"", sha256_hex(cache_key))
+}
+
+fn sha256_hex(input: &str) -> String {
+    let digest = Sha256::digest(input.as_bytes());
+    let mut encoded = String::with_capacity(64);
     for byte in digest {
         encoded.push_str(&format!("{byte:02x}"));
     }
-    encoded.push('"');
     encoded
 }
 
@@ -1265,7 +1328,7 @@ fn shared_page_styles() -> &'static str {
     }
     .brand {
       font-weight: 800;
-      letter-spacing: -0.03em;
+      letter-spacing: 0;
       color: var(--ink);
       text-decoration: none;
     }
@@ -1292,13 +1355,13 @@ fn shared_page_styles() -> &'static str {
       color: var(--accent);
       font-weight: 700;
       font-size: 0.8rem;
-      letter-spacing: 0.13em;
+      letter-spacing: 0;
     }
     h1 {
       font-size: clamp(2.2rem, 6vw, 4.4rem);
       line-height: 0.95;
       margin: 8px 0 8px;
-      letter-spacing: -0.05em;
+      letter-spacing: 0;
       max-width: 12ch;
     }
     h2 {
@@ -1855,7 +1918,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       font-size: clamp(2.2rem, 6vw, 4.4rem);
       line-height: 0.95;
       margin: 12px 0 16px;
-      letter-spacing: -0.05em;
+      letter-spacing: 0;
       max-width: 10ch;
     }}
     p {{
@@ -1869,7 +1932,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       color: var(--accent);
       font-weight: 700;
       font-size: 0.8rem;
-      letter-spacing: 0.13em;
+      letter-spacing: 0;
     }}
     .generator {{
       margin-top: 26px;
@@ -1945,7 +2008,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
     .url-label {{
       font-size: 0.84rem;
       text-transform: uppercase;
-      letter-spacing: 0.12em;
+      letter-spacing: 0;
       color: var(--accent-strong);
       font-weight: 700;
     }}
@@ -2598,7 +2661,7 @@ avatarUrl.search = new URLSearchParams({{
 </section>
 <section class="card">
   <h2>Signed Storage Links</h2>
-  <p>If this deployment has object storage configured, request a presigned storage link from <code>/v1/avatar/link</code>. That endpoint stores the generated object and returns JSON with the signed URL and object key. Standard avatar responses do not expose signed-link metadata in response headers.</p>
+  <p>If this deployment has object storage configured, request a presigned storage link from <code>/v1/avatar/link</code>. That endpoint stores the generated object and returns JSON with the signed URL, object key, and a hashed cache key. Standard avatar responses do not expose signed-link metadata in response headers.</p>
   <pre><code>GET https://{site}/v1/avatar/link?id=robot@hashavatar.app&amp;algorithm=sha512&amp;kind=robot&amp;background=white&amp;accessory=glasses&amp;color=gold&amp;expression=happy&amp;shape=circle&amp;format=webp&amp;size=256</code></pre>
 </section>
 <section class="card">
@@ -2649,7 +2712,7 @@ fn render_docs_html(csp_nonce: &CspNonce) -> String {
   </section>
   <section class="card">
     <h2>Rate Limits</h2>
-    <p>The public service applies origin-side rate limits, with stricter limits on <code>/v1/avatar/link</code> because object storage writes are more expensive than direct rendering.</p>
+    <p>The public service applies origin-side rate limits, with stricter limits on <code>/v1/avatar/link</code>, direct avatar requests with <code>persist=true</code>, and <code>/og.png</code> because object storage writes and Open Graph image rendering are more expensive than direct rendering.</p>
   </section>
   <section class="card">
     <h2>Timeouts</h2>
@@ -2808,7 +2871,7 @@ impl FromStr for AvatarRequestFormat {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct AvatarRequest {
     identity: String,
     namespace_tenant: String,
@@ -2823,6 +2886,26 @@ struct AvatarRequest {
     size: u32,
     persist: bool,
     redirect: bool,
+}
+
+impl std::fmt::Debug for AvatarRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AvatarRequest")
+            .field("identity", &"[redacted]")
+            .field("namespace_tenant", &self.namespace_tenant)
+            .field("namespace_style", &self.namespace_style)
+            .field("kind", &self.kind)
+            .field("background", &self.background)
+            .field("accessory", &self.accessory)
+            .field("color", &self.color)
+            .field("expression", &self.expression)
+            .field("shape", &self.shape)
+            .field("format", &self.format)
+            .field("size", &self.size)
+            .field("persist", &self.persist)
+            .field("redirect", &self.redirect)
+            .finish()
+    }
 }
 
 impl AvatarRequest {
@@ -3084,23 +3167,27 @@ mod tests {
         let limiter = RateLimiter::with_capacity(8);
         let key = "avatar:127.0.0.1:public:cat".to_string();
 
-        assert!(limiter.check(key.clone(), 2).await);
-        assert!(limiter.check(key.clone(), 2).await);
-        assert!(!limiter.check(key, 2).await);
+        assert!(limiter.check(key.clone(), 2).await.is_ok());
+        assert!(limiter.check(key.clone(), 2).await.is_ok());
+        let retry_after = limiter
+            .check(key, 2)
+            .await
+            .expect_err("third request should be rate limited");
+        assert!((1..=60).contains(&retry_after));
     }
 
     #[tokio::test]
     async fn rate_limiter_evicts_oldest_bucket_at_capacity() {
         let limiter = RateLimiter::with_capacity(2);
 
-        assert!(limiter.check("first".to_string(), 1).await);
-        assert!(limiter.check("second".to_string(), 1).await);
+        assert!(limiter.check("first".to_string(), 1).await.is_ok());
+        assert!(limiter.check("second".to_string(), 1).await.is_ok());
         assert_eq!(limiter.len().await, 2);
 
-        assert!(limiter.check("third".to_string(), 1).await);
+        assert!(limiter.check("third".to_string(), 1).await.is_ok());
         assert_eq!(limiter.len().await, 2);
 
-        assert!(limiter.check("first".to_string(), 1).await);
+        assert!(limiter.check("first".to_string(), 1).await.is_ok());
         assert_eq!(limiter.len().await, 2);
     }
 
@@ -3113,6 +3200,7 @@ mod tests {
                 limiter
                     .check(format!("avatar:spoofed-{idx}:tenant-{idx}:cat"), 1)
                     .await
+                    .is_ok()
             );
         }
 
@@ -3135,6 +3223,44 @@ mod tests {
             rate_limit_key(RateLimitRoute::StorageLink, "203.0.113.10"),
             "storage-link:203.0.113.10"
         );
+        assert_eq!(
+            rate_limit_key(RateLimitRoute::OgImage, "203.0.113.10"),
+            "og-image:203.0.113.10"
+        );
+    }
+
+    #[tokio::test]
+    async fn rate_limit_response_includes_retry_after() {
+        let state = AppState {
+            storage: None,
+            trusted_proxies: TrustedProxies::default(),
+            rate_limiter: RateLimiter::with_capacity(8),
+            metrics: Metrics::default(),
+        };
+        let headers = HeaderMap::new();
+        let peer_ip = IpAddr::from([203, 0, 113, 10]);
+
+        for _ in 0..RateLimitRoute::StorageLink.limit() {
+            assert!(
+                enforce_limits(&state, &headers, peer_ip, RateLimitRoute::StorageLink)
+                    .await
+                    .is_ok()
+            );
+        }
+
+        let response = enforce_limits(&state, &headers, peer_ip, RateLimitRoute::StorageLink)
+            .await
+            .expect_err("request should be rate limited");
+
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        let retry_after = response
+            .headers()
+            .get(header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok())
+            .expect("retry-after should be a second count");
+        assert!((1..=60).contains(&retry_after));
+        assert_eq!(state.metrics.limited_total.load(Ordering::Relaxed), 1);
     }
 
     #[tokio::test]
@@ -3148,7 +3274,7 @@ mod tests {
         });
         assert!(task.await.expect_err("task should panic").is_panic());
 
-        assert!(limiter.check("after-poison".to_string(), 1).await);
+        assert!(limiter.check("after-poison".to_string(), 1).await.is_ok());
     }
 
     #[test]
@@ -3158,6 +3284,11 @@ mod tests {
         ));
         assert!(is_loopback_peer(
             "[::1]:8080".parse().expect("ipv6 loopback")
+        ));
+        assert!(is_loopback_peer(
+            "[::ffff:127.0.0.1]:8080"
+                .parse()
+                .expect("mapped ipv4 loopback")
         ));
         assert!(!is_loopback_peer(
             "198.51.100.10:8080".parse().expect("remote peer")
@@ -3266,7 +3397,12 @@ mod tests {
             Some("cross-origin")
         );
         assert!(!image_headers.contains_key("cross-origin-opener-policy"));
-        assert!(!image_headers.contains_key("strict-transport-security"));
+        assert_eq!(
+            image_headers
+                .get("strict-transport-security")
+                .and_then(|value| value.to_str().ok()),
+            Some("max-age=31536000; includeSubDomains")
+        );
     }
 
     #[test]
@@ -3277,12 +3413,19 @@ mod tests {
             .nth(1)
             .and_then(|after_name| after_name.split("async fn serve_avatar_link(").next())
             .expect("serve_avatar source should be present");
+        let serve_avatar_link_source = source
+            .split("async fn serve_avatar_link(")
+            .nth(1)
+            .and_then(|after_name| after_name.split("async fn generate_avatar_asset(").next())
+            .expect("serve_avatar_link source should be present");
 
         assert!(!serve_avatar_source.contains("HeaderName::storage_key()"));
         assert!(!serve_avatar_source.contains("HeaderName::signed_url()"));
         assert!(source.contains("async fn serve_avatar_link("));
-        assert!(source.contains("object_key: signed.object_key"));
-        assert!(source.contains("signed_url: signed.signed_url"));
+        assert!(serve_avatar_link_source.contains("object_key: signed.object_key"));
+        assert!(serve_avatar_link_source.contains("signed_url: signed.signed_url"));
+        assert!(serve_avatar_link_source.contains("cache_key: sha256_hex(&asset.cache_key)"));
+        assert!(!serve_avatar_link_source.contains("cache_key: asset.cache_key"));
     }
 
     #[test]
@@ -3387,11 +3530,16 @@ mod tests {
         let handler = source
             .split("async fn og_png(")
             .nth(1)
-            .and_then(|after_name| after_name.split("async fn healthz(").next())
+            .and_then(|after_name| after_name.split("enum OgPngError").next())
             .expect("og_png handler should be present");
 
         assert!(handler.contains("enforce_limits("));
-        assert!(handler.contains("RateLimitRoute::Avatar"));
+        assert!(handler.contains("RateLimitRoute::OgImage"));
+        assert!(handler.contains("validate_identity(&title_id)"));
+        assert!(handler.contains("tokio::task::spawn_blocking"));
+        assert!(handler.contains("build_og_png_bytes("));
+        assert!(handler.contains("tokio::time::timeout"));
+        assert!(!handler.contains("ImageBuffer::from_pixel"));
     }
 
     #[test]
@@ -3436,6 +3584,33 @@ mod tests {
 
         assert_eq!(
             client_ip(&headers, peer_ip, &trusted_proxies),
+            "198.51.100.10"
+        );
+    }
+
+    #[test]
+    fn ipv4_mapped_addresses_are_canonicalized_for_rate_limits() {
+        let mapped_peer = "::ffff:198.51.100.10"
+            .parse::<IpAddr>()
+            .expect("mapped peer");
+        let mapped_proxy = "::ffff:10.89.42.10"
+            .parse::<IpAddr>()
+            .expect("mapped proxy");
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("::ffff:203.0.113.99, ::ffff:10.89.42.10"),
+        );
+        let trusted_proxies = TrustedProxies::parse("10.89.42.0/24").expect("trusted proxy CIDR");
+
+        assert_eq!(normalize_ip(mapped_peer).to_string(), "198.51.100.10");
+        assert!(trusted_proxies.contains(mapped_proxy));
+        assert_eq!(
+            client_ip(&headers, mapped_proxy, &trusted_proxies),
+            "203.0.113.99"
+        );
+        assert_eq!(
+            client_ip(&HeaderMap::new(), mapped_peer, &TrustedProxies::default()),
             "198.51.100.10"
         );
     }
@@ -3544,6 +3719,94 @@ mod tests {
         assert!(!body.contains("<script>"));
     }
 
+    #[tokio::test]
+    async fn og_png_rejects_oversized_identity_before_rendering() {
+        let state = AppState {
+            storage: None,
+            trusted_proxies: TrustedProxies::default(),
+            rate_limiter: RateLimiter::with_capacity(8),
+            metrics: Metrics::default(),
+        };
+        let response = og_png(
+            State(state),
+            ConnectInfo("127.0.0.1:8080".parse().expect("peer address")),
+            HeaderMap::new(),
+            Query(OgQuery {
+                id: Some("x".repeat(MAX_ID_BYTES + 1)),
+                tenant: None,
+                style_version: None,
+                kind: None,
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_text(response).await;
+        assert!(body.contains("identity must be at most"));
+    }
+
+    #[tokio::test]
+    async fn persisted_avatar_requests_use_storage_rate_limit() {
+        let state = AppState {
+            storage: None,
+            trusted_proxies: TrustedProxies::default(),
+            rate_limiter: RateLimiter::with_capacity(64),
+            metrics: Metrics::default(),
+        };
+        let headers = HeaderMap::new();
+        let peer_addr: SocketAddr = "127.0.0.1:8080".parse().expect("peer address");
+
+        for _ in 0..RateLimitRoute::StorageLink.limit() {
+            assert!(
+                enforce_limits(
+                    &state,
+                    &headers,
+                    peer_addr.ip(),
+                    RateLimitRoute::StorageLink
+                )
+                .await
+                .is_ok()
+            );
+        }
+
+        let response = query_avatar(
+            State(state),
+            ConnectInfo(peer_addr),
+            headers,
+            Query(AvatarQuery {
+                algorithm: None,
+                id: Some(DEFAULT_ID.to_string()),
+                kind: None,
+                background: None,
+                accessory: None,
+                color: None,
+                expression: None,
+                shape: None,
+                format: None,
+                size: None,
+                tenant: None,
+                style_version: None,
+                persist: Some(true),
+                redirect: None,
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(response.headers().contains_key(header::RETRY_AFTER));
+    }
+
+    #[test]
+    fn avatar_request_debug_redacts_identity() {
+        let mut request = test_avatar_request(AvatarRequestFormat::Webp);
+        request.identity = "user@example.com".to_string();
+
+        let debug = format!("{request:?}");
+
+        assert!(debug.contains("identity: \"[redacted]\""));
+        assert!(!debug.contains("user@example.com"));
+    }
+
     #[test]
     fn draw_circle_uses_wide_arithmetic_for_large_radius() {
         assert!(is_inside_circle(46_341, 0, 46_341));
@@ -3575,7 +3838,7 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_webp_with_hashavatar_0_13() {
+    fn build_avatar_asset_renders_webp_with_hashavatar_1_0() {
         let request = test_avatar_request(AvatarRequestFormat::Webp);
         let asset = build_avatar_asset(&request).expect("webp avatar should render");
 

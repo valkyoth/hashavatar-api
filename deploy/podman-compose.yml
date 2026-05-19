@@ -11,6 +11,13 @@ services:
       PORT: "8080"
       PUBLIC_WEBSITE_HOST: "0.0.0.0"
       HASHAVATAR_TRUSTED_PROXIES: "10.89.42.0/24"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m,mode=1777
     restart: unless-stopped
     networks:
       - hashavatar
@@ -21,6 +28,8 @@ services:
     restart: unless-stopped
     stop_signal: SIGTERM
     stop_grace_period: 15s
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - hashavatar
     ports:

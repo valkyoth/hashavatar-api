@@ -11,7 +11,7 @@ audit, SBOM, reproducibility, smoke, and GitHub CodeQL default setup checks.
 
 ## Current Status
 
-The current service version is `0.13.0`.
+The current service version is `1.0.0`.
 
 Implemented now:
 
@@ -25,7 +25,7 @@ Implemented now:
 - Namespace-aware tenant and style-version parameters.
 - SHA-512 identity hashing.
 - WebP avatar responses.
-- Avatar families from `hashavatar 0.13.0`: `cat`, `dog`, `robot`, `fox`,
+- Avatar families from `hashavatar 1.0.0`: `cat`, `dog`, `robot`, `fox`,
   `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`,
   `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`,
   `pizza`, `icecream`, `octopus`, `knight`, `bear`, `penguin`, `dragon`,
@@ -57,7 +57,7 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Service license | `EUPL-1.2` |
-| Renderer crate | `hashavatar 0.13.0` |
+| Renderer crate | `hashavatar 1.0.0` |
 | MSRV | Rust `1.95.0` |
 | Runtime container | Wolfi |
 | HTTP framework | `axum` |
@@ -98,7 +98,7 @@ Important query parameters:
 | `shape` | `square` | Avatar crop shape: `square`, `circle`, `squircle`, `hexagon`, or `octagon`. |
 | `format` | `webp` | Output format. Only `webp` is supported for avatar responses. |
 | `size` | `256` | Square image size in pixels. |
-| `persist` | `false` | Store through configured S3-compatible backend when enabled. |
+| `persist` | `false` | Store through configured S3-compatible backend when enabled; uses the stricter storage rate limit. |
 
 ### Path Avatar
 
@@ -117,8 +117,9 @@ GET /v1/avatar/link?id=robot@hashavatar.app&kind=robot&background=white&accessor
 ```
 
 This endpoint requires object storage configuration. It renders and stores the
-avatar when needed, then returns object metadata and a signed URL. Standard
-avatar responses do not expose signed-link metadata in response headers.
+avatar when needed, then returns object metadata, a signed URL, and a hashed
+cache key. Standard avatar responses do not expose signed-link metadata in
+response headers.
 
 ## Limits
 
@@ -130,7 +131,7 @@ avatar responses do not expose signed-link metadata in response headers.
 | Maximum namespace tenant | `64` ASCII path-safe bytes |
 | Maximum namespace style version | `64` ASCII path-safe bytes |
 | Maximum renderer identity input | `1024` bytes |
-| Rate-limit buckets | `16,384` |
+| Rate-limit buckets | `65,536` |
 | Avatar render timeout | `3s` |
 | Storage operation timeout | `5s` |
 

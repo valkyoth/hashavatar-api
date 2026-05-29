@@ -11,7 +11,7 @@ audit, SBOM, reproducibility, smoke, and GitHub CodeQL default setup checks.
 
 ## Current Status
 
-The current service version is `1.0.0`.
+The current service version is `1.0.1`.
 
 Implemented now:
 
@@ -213,11 +213,17 @@ Object storage:
 - `HASHAVATAR_S3_ENDPOINT`
 - `HASHAVATAR_S3_PATH_STYLE`
 - `HASHAVATAR_S3_PREFIX`
-- `HASHAVATAR_S3_PRESIGN_TTL_SECONDS`
+- `HASHAVATAR_S3_PRESIGN_TTL_SECONDS` clamped to `60..=604800`
 
 `HASHAVATAR_TRUSTED_PROXIES` accepts a comma or whitespace separated list of IP
 addresses and CIDR ranges. Forwarded client IP headers are ignored unless the
-direct peer address matches this allowlist.
+direct peer address matches this allowlist. Keep this allowlist limited to
+proxies that overwrite or correctly append client IP headers; rate-limit state
+is intentionally sized for the real client IP space of the deployment.
+
+Do not proxy `/metrics` from a public listener. The endpoint is intended for
+local scraping only; a same-host reverse proxy can make the loopback peer check
+pass if it forwards the route.
 
 ## Testing And Release Evidence
 

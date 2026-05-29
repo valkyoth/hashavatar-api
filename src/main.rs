@@ -1,8 +1,10 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use aws_config::{BehaviorVersion, Region};
@@ -27,7 +29,7 @@ use ipnet::IpNet;
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 8080;
@@ -48,11 +50,16 @@ const AVATAR_TIMEOUT_MS: u64 = 3_000;
 const STORAGE_TIMEOUT_MS: u64 = 5_000;
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 const MAX_RATE_LIMIT_BUCKETS: usize = 65_536;
+const RATE_LIMIT_SHARDS: usize = 64;
+const MAX_CONCURRENT_RENDERS: usize = 64;
 const INTERNAL_ERROR_MESSAGE: &str = "An internal server error occurred.";
 const MIN_SIZE: u32 = 64;
 const MAX_SIZE: u32 = 1024;
 const MAX_ID_BYTES: usize = 512;
 const MAX_NAMESPACE_COMPONENT_BYTES: usize = 64;
+const DEFAULT_S3_PRESIGN_TTL_SECONDS: u64 = 900;
+const MIN_S3_PRESIGN_TTL_SECONDS: u64 = 60;
+const MAX_S3_PRESIGN_TTL_SECONDS: u64 = 604_800;
 const PRESET_PAGE_SIZE: usize = 12;
 const INVALID_NAMESPACE_MESSAGE: &str = "invalid namespace: tenant and style_version must be 1-64 ASCII letters, digits, hyphens, or underscores";
 const INVALID_HASH_ALGORITHM_MESSAGE: &str = "unsupported hash algorithm: expected sha512";
@@ -60,6 +67,9 @@ const INVALID_AVATAR_FORMAT_MESSAGE: &str = "unsupported avatar format: expected
 const INVALID_AVATAR_RENDER_MESSAGE: &str = "avatar generation failed";
 const INDEX_SCRIPT_SHA256: &str = "'sha256-7gjoUnTfcILxVkX3DugGXgaAEhWr+Pn91S0M+2HGQTs='";
 const INDEX_SCRIPT_SHA256_COMPAT: &str = "'sha256-ZswfTY7H35rbv8WC7NXBoiC7WNu86vSzCDChNWwZZDM='";
+
+static RENDER_SLOTS: LazyLock<Arc<Semaphore>> =
+    LazyLock::new(|| Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS)));
 
 struct AppState {
     storage: Option<Arc<S3Storage>>,
@@ -464,7 +474,12 @@ async fn og_png(
         .and_then(|raw| AvatarKind::from_str(raw).ok())
         .unwrap_or(AvatarKind::Monster);
 
+    let render_permit = match RENDER_SLOTS.clone().try_acquire_owned() {
+        Ok(permit) => permit,
+        Err(_) => return server_busy(),
+    };
     let render = tokio::task::spawn_blocking(move || {
+        let _render_permit = render_permit;
         build_og_png_bytes(&title_id, &tenant, &style_version, lead_kind)
     });
     let bytes =
@@ -587,7 +602,7 @@ impl RateLimitRoute {
 
 #[derive(Clone)]
 struct RateLimiter {
-    buckets: Arc<Mutex<RateLimiterState>>,
+    shards: Arc<Vec<Mutex<RateLimiterState>>>,
 }
 
 #[derive(Clone, Copy)]
@@ -680,14 +695,21 @@ impl Default for RateLimiter {
 
 impl RateLimiter {
     fn with_capacity(capacity: usize) -> Self {
+        let shard_count = RATE_LIMIT_SHARDS.min(capacity.max(1));
+        let per_shard_capacity = capacity.max(1).div_ceil(shard_count);
+        let shards = (0..shard_count)
+            .map(|_| Mutex::new(RateLimiterState::new(per_shard_capacity)))
+            .collect();
+
         Self {
-            buckets: Arc::new(Mutex::new(RateLimiterState::new(capacity))),
+            shards: Arc::new(shards),
         }
     }
 
     async fn check(&self, key: String, limit: u32) -> Result<(), u64> {
         let now = Instant::now();
-        let mut buckets = self.buckets.lock().await;
+        let shard_index = self.shard_index_for(&key);
+        let mut buckets = self.shards[shard_index].lock().await;
         let bucket = buckets.bucket_for(key, now);
         if now.duration_since(bucket.started_at) >= RATE_LIMIT_WINDOW {
             bucket.started_at = now;
@@ -702,9 +724,19 @@ impl RateLimiter {
         Ok(())
     }
 
+    fn shard_index_for(&self, key: &str) -> usize {
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        hasher.finish() as usize % self.shards.len()
+    }
+
     #[cfg(test)]
     async fn len(&self) -> usize {
-        self.buckets.lock().await.len()
+        let mut len = 0;
+        for shard in self.shards.iter() {
+            len += shard.lock().await.len();
+        }
+        len
     }
 }
 
@@ -1052,7 +1084,14 @@ async fn serve_avatar_link(state: AppState, request: AvatarRequest) -> Response 
 }
 
 async fn generate_avatar_asset(request: AvatarRequest) -> Result<AvatarAsset, Response> {
-    let render = tokio::task::spawn_blocking(move || build_avatar_asset(&request));
+    let render_permit = RENDER_SLOTS
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| server_busy())?;
+    let render = tokio::task::spawn_blocking(move || {
+        let _render_permit = render_permit;
+        build_avatar_asset(&request)
+    });
     match tokio::time::timeout(Duration::from_millis(AVATAR_TIMEOUT_MS), render).await {
         Ok(Ok(Ok(asset))) => Ok(asset),
         Ok(Ok(Err(message))) => Err(bad_request(&message)),
@@ -1226,6 +1265,10 @@ fn is_valid_namespace_component(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
 }
 
+fn clamp_s3_presign_ttl_seconds(ttl: u64) -> u64 {
+    ttl.clamp(MIN_S3_PRESIGN_TTL_SECONDS, MAX_S3_PRESIGN_TTL_SECONDS)
+}
+
 fn bad_request(message: &str) -> Response {
     (StatusCode::BAD_REQUEST, message.to_string()).into_response()
 }
@@ -1237,6 +1280,15 @@ fn internal_error(error: impl std::fmt::Display) -> Response {
 
 fn request_timeout(message: &str) -> Response {
     (StatusCode::REQUEST_TIMEOUT, message.to_string()).into_response()
+}
+
+fn server_busy() -> Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        [(header::RETRY_AFTER, "1")],
+        "server busy, retry shortly",
+    )
+        .into_response()
 }
 
 fn draw_rect(image: &mut RgbaImage, x: u32, y: u32, width: u32, height: u32, color: Rgba<u8>) {
@@ -3050,10 +3102,18 @@ impl S3Storage {
             .unwrap_or(false);
         let prefix =
             std::env::var("HASHAVATAR_S3_PREFIX").unwrap_or_else(|_| "avatars".to_string());
-        let ttl = std::env::var("HASHAVATAR_S3_PRESIGN_TTL_SECONDS")
+        let requested_ttl = std::env::var("HASHAVATAR_S3_PRESIGN_TTL_SECONDS")
             .ok()
             .and_then(|raw| raw.parse::<u64>().ok())
-            .unwrap_or(900);
+            .unwrap_or(DEFAULT_S3_PRESIGN_TTL_SECONDS);
+        let ttl = clamp_s3_presign_ttl_seconds(requested_ttl);
+        if ttl != requested_ttl {
+            tracing::warn!(
+                requested_ttl_seconds = requested_ttl,
+                applied_ttl_seconds = ttl,
+                "clamped S3 presign TTL"
+            );
+        }
 
         let shared_config = aws_config::defaults(BehaviorVersion::latest())
             .region(Region::new(region))
@@ -3082,14 +3142,24 @@ impl S3Storage {
         metrics: &Metrics,
     ) -> Result<SignedStorageObject, Box<dyn std::error::Error>> {
         let key = format!("{}/{}", self.prefix.trim_matches('/'), asset.object_key);
-        let exists = self
+        let exists = match self
             .client
             .head_object()
             .bucket(&self.bucket)
             .key(&key)
             .send()
             .await
-            .is_ok();
+        {
+            Ok(_) => true,
+            Err(error)
+                if error
+                    .as_service_error()
+                    .is_some_and(|error| error.is_not_found()) =>
+            {
+                false
+            }
+            Err(error) => return Err(Box::new(error)),
+        };
 
         if exists {
             metrics.storage_hit_total.fetch_add(1, Ordering::Relaxed);
@@ -3178,16 +3248,20 @@ mod tests {
 
     #[tokio::test]
     async fn rate_limiter_evicts_oldest_bucket_at_capacity() {
-        let limiter = RateLimiter::with_capacity(2);
+        let limiter = RateLimiter::with_capacity(128);
+        let keys = same_rate_limit_shard_keys(&limiter, 3);
+        let first = keys[0].clone();
+        let second = keys[1].clone();
+        let third = keys[2].clone();
 
-        assert!(limiter.check("first".to_string(), 1).await.is_ok());
-        assert!(limiter.check("second".to_string(), 1).await.is_ok());
+        assert!(limiter.check(first.clone(), 1).await.is_ok());
+        assert!(limiter.check(second, 1).await.is_ok());
         assert_eq!(limiter.len().await, 2);
 
-        assert!(limiter.check("third".to_string(), 1).await.is_ok());
+        assert!(limiter.check(third, 1).await.is_ok());
         assert_eq!(limiter.len().await, 2);
 
-        assert!(limiter.check("first".to_string(), 1).await.is_ok());
+        assert!(limiter.check(first, 1).await.is_ok());
         assert_eq!(limiter.len().await, 2);
     }
 
@@ -3211,6 +3285,37 @@ mod tests {
     fn rate_limiter_capacity_is_churn_resistant() {
         let capacity = MAX_RATE_LIMIT_BUCKETS;
         assert!(capacity >= 65_536);
+    }
+
+    #[test]
+    fn render_concurrency_has_process_wide_backpressure() {
+        assert_eq!(MAX_CONCURRENT_RENDERS, 64);
+
+        let source = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"));
+        let generate_source = source
+            .split("async fn generate_avatar_asset(")
+            .nth(1)
+            .and_then(|after_name| after_name.split("fn build_avatar_asset(").next())
+            .expect("generate_avatar_asset source should be present");
+        let og_source = source
+            .split("async fn og_png(")
+            .nth(1)
+            .and_then(|after_name| after_name.split("enum OgPngError").next())
+            .expect("og_png source should be present");
+
+        assert!(generate_source.contains("try_acquire_owned()"));
+        assert!(generate_source.contains("let _render_permit = render_permit;"));
+        assert!(og_source.contains("try_acquire_owned()"));
+        assert!(og_source.contains("let _render_permit = render_permit;"));
+    }
+
+    #[test]
+    fn rate_limiter_uses_sharded_hot_path() {
+        let limiter = RateLimiter::default();
+        assert_eq!(limiter.shards.len(), RATE_LIMIT_SHARDS);
+        for shard in limiter.shards.iter() {
+            assert_eq!(shard.blocking_lock().buckets.cap().get(), 1_024);
+        }
     }
 
     #[test]
@@ -3266,15 +3371,52 @@ mod tests {
     #[tokio::test]
     async fn rate_limiter_uses_non_poisoning_async_mutex() {
         let limiter = RateLimiter::with_capacity(2);
-        let buckets = limiter.buckets.clone();
+        let shard_index = limiter.shard_index_for("after-poison");
+        let shards = limiter.shards.clone();
 
         let task = tokio::spawn(async move {
-            let _guard = buckets.lock().await;
+            let _guard = shards[shard_index].lock().await;
             panic!("poison rate limiter lock");
         });
         assert!(task.await.expect_err("task should panic").is_panic());
 
         assert!(limiter.check("after-poison".to_string(), 1).await.is_ok());
+    }
+
+    #[test]
+    fn s3_presign_ttl_is_bounded_to_sigv4_limits() {
+        assert_eq!(clamp_s3_presign_ttl_seconds(1), 60);
+        assert_eq!(clamp_s3_presign_ttl_seconds(900), 900);
+        assert_eq!(clamp_s3_presign_ttl_seconds(u64::MAX), 604_800);
+    }
+
+    #[test]
+    fn s3_head_object_errors_are_not_collapsed_to_cache_miss() {
+        let source = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"));
+        let store_source = source
+            .split("async fn store_and_sign(")
+            .nth(1)
+            .and_then(|after_name| after_name.split("let presigned = self").next())
+            .expect("store_and_sign source should be present");
+
+        assert!(store_source.contains("as_service_error()"));
+        assert!(store_source.contains("is_not_found()"));
+        assert!(!store_source.contains(".await\n            .is_ok()"));
+    }
+
+    fn same_rate_limit_shard_keys(limiter: &RateLimiter, count: usize) -> Vec<String> {
+        let mut by_shard = std::collections::BTreeMap::<usize, Vec<String>>::new();
+        for idx in 0..10_000 {
+            let key = format!("key-{idx}");
+            let shard = limiter.shard_index_for(&key);
+            let keys = by_shard.entry(shard).or_default();
+            keys.push(key);
+            if keys.len() == count {
+                return keys.clone();
+            }
+        }
+
+        panic!("failed to find enough keys for one rate-limit shard");
     }
 
     #[test]

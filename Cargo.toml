@@ -1,6 +1,6 @@
 [package]
 name = "hashavatar-api"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 rust-version = "1.96"
 description = "Public avatar API and landing page for hashavatar"

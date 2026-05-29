@@ -14,6 +14,11 @@ The app uses the direct peer IP for rate limiting by default. The compose file
 sets `HASHAVATAR_TRUSTED_PROXIES=10.89.42.0/24` and pins the private network to
 that subnet so the app only honors `X-Forwarded-For` style headers from the
 Fluxheim network. Do not expose the app container port directly to the internet.
+Keep this trusted-proxy range aligned with the private proxy network; widening it
+can let untrusted peers inflate rate-limit key cardinality.
+Do not add a Fluxheim route for `/metrics`: the application also checks for a
+loopback peer, but a same-host reverse proxy connects from loopback and would
+make metrics public if explicitly forwarded.
 
 The app container is hardened for the expected runtime shape: read-only root
 filesystem, no new privileges, all Linux capabilities dropped, and a small

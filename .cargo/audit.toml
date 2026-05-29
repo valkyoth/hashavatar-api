@@ -5,5 +5,5 @@ fetch = true
 stale = false
 
 [yanked]
-enabled = false
-update_index = false
+enabled = true
+update_index = true

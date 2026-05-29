@@ -25,7 +25,7 @@ Implemented now:
 - Namespace-aware tenant and style-version parameters.
 - SHA-512 identity hashing.
 - WebP avatar responses.
-- Avatar families from `hashavatar 1.0.0`: `cat`, `dog`, `robot`, `fox`,
+- Avatar families from `hashavatar 1.0.1`: `cat`, `dog`, `robot`, `fox`,
   `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`,
   `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`,
   `pizza`, `icecream`, `octopus`, `knight`, `bear`, `penguin`, `dragon`,
@@ -57,8 +57,8 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Service license | `EUPL-1.2` |
-| Renderer crate | `hashavatar 1.0.0` |
-| MSRV | Rust `1.95.0` |
+| Renderer crate | `hashavatar 1.0.1` |
+| MSRV | Rust `1.96.0` |
 | Runtime container | Wolfi |
 | HTTP framework | `axum` |
 | Object storage | Optional S3-compatible backend |
@@ -171,7 +171,7 @@ The recommended production strategy is:
 
 ## Running Locally
 
-Requires Rust `1.95.0` or newer.
+Requires Rust `1.96.0` or newer.
 
 ```bash
 cargo run

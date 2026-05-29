@@ -3838,7 +3838,7 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_webp_with_hashavatar_1_0() {
+    fn build_avatar_asset_renders_webp_with_hashavatar_1_0_1() {
         let request = test_avatar_request(AvatarRequestFormat::Webp);
         let asset = build_avatar_asset(&request).expect("webp avatar should render");
 

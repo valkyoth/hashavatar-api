@@ -2,7 +2,7 @@
 name = "hashavatar-api"
 version = "1.0.0"
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.96"
 description = "Public avatar API and landing page for hashavatar"
 license = "EUPL-1.2"
 repository = "https://github.com/valkyoth/hashavatar-api"
@@ -10,13 +10,13 @@ homepage = "https://github.com/valkyoth/hashavatar-api"
 documentation = "https://github.com/valkyoth/hashavatar-api"
 
 [dependencies]
-hashavatar = "1.0.0"
+hashavatar = "1.0.1"
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "query", "json"] }
 getrandom = { version = "0.4.2", default-features = false }
 ipnet = { version = "2.12.0", default-features = false }
 lru = { version = "0.18.0", default-features = false }
 serde = { version = "1.0.228", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0.149", default-features = false, features = ["std"] }
+serde_json = { version = "1.0.150", default-features = false, features = ["std"] }
 sha2 = { version = "0.11.0", default-features = false, features = ["alloc"] }
 tokio = { version = "1.52.3", default-features = false, features = ["macros", "rt-multi-thread", "net"] }
 tracing = "0.1.44"

@@ -11,7 +11,7 @@ audit, SBOM, reproducibility, smoke, and GitHub CodeQL default setup checks.
 
 ## Current Status
 
-The current service version is `1.0.1`.
+The current service version is `1.0.2`.
 
 Implemented now:
 
@@ -25,7 +25,7 @@ Implemented now:
 - Namespace-aware tenant and style-version parameters.
 - SHA-512 identity hashing.
 - WebP avatar responses.
-- Avatar families from `hashavatar 1.0.1`: `cat`, `dog`, `robot`, `fox`,
+- Avatar families from `hashavatar 1.0.2`: `cat`, `dog`, `robot`, `fox`,
   `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`,
   `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`,
   `pizza`, `icecream`, `octopus`, `knight`, `bear`, `penguin`, `dragon`,
@@ -57,7 +57,7 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Service license | `EUPL-1.2` |
-| Renderer crate | `hashavatar 1.0.1` |
+| Renderer crate | `hashavatar 1.0.2` |
 | MSRV | Rust `1.96.0` |
 | Runtime container | Wolfi |
 | HTTP framework | `axum` |

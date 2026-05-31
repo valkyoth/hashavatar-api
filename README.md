@@ -100,6 +100,13 @@ Important query parameters:
 | `size` | `256` | Square image size in pixels. |
 | `persist` | `false` | Store through configured S3-compatible backend when enabled; uses the stricter storage rate limit. |
 
+Use a stable one-way hash instead of raw personal data when identities come from
+emails or user records:
+
+```bash
+printf '%s' 'user@example.com' | sha256sum | cut -d' ' -f1
+```
+
 ### Path Avatar
 
 ```text

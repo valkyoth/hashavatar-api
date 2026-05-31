@@ -1,5 +1,3 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::str::FromStr;
@@ -12,6 +10,7 @@ use aws_sdk_s3::Client as S3Client;
 use aws_sdk_s3::config::Builder as S3ConfigBuilder;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::types::ServerSideEncryption;
 use axum::extract::{ConnectInfo, Extension, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
@@ -211,12 +210,16 @@ fn route_uses_inline_html(path: &str) -> bool {
 fn apply_security_headers(headers: &mut HeaderMap, csp: &str, is_html_response: bool) {
     headers.insert(
         header::HeaderName::from_static("content-security-policy"),
-        HeaderValue::from_str(csp)
-            .unwrap_or_else(|_| HeaderValue::from_static(static_content_security_policy())),
+        HeaderValue::from_str(csp).unwrap_or_else(|error| {
+            tracing::error!(%error, "CSP header value rejected; falling back to static policy");
+            HeaderValue::from_static(static_content_security_policy())
+        }),
     );
     headers.insert(
         header::HeaderName::from_static("permissions-policy"),
-        HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
+        HeaderValue::from_static(
+            "camera=(), microphone=(), geolocation=(), payment=(), accelerometer=(), gyroscope=(), magnetometer=(), usb=(), serial=(), bluetooth=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), screen-wake-lock=(), idle-detection=()",
+        ),
     );
     headers.insert(
         header::HeaderName::from_static("referrer-policy"),
@@ -229,6 +232,10 @@ fn apply_security_headers(headers: &mut HeaderMap, csp: &str, is_html_response: 
     headers.insert(
         header::HeaderName::from_static("x-frame-options"),
         HeaderValue::from_static("DENY"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("x-permitted-cross-domain-policies"),
+        HeaderValue::from_static("none"),
     );
     headers.insert(
         header::HeaderName::from_static("cross-origin-resource-policy"),
@@ -275,7 +282,9 @@ fn secure_rng_failure(error: getrandom::Error) -> Response {
     );
     headers.insert(
         header::HeaderName::from_static("permissions-policy"),
-        HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
+        HeaderValue::from_static(
+            "camera=(), microphone=(), geolocation=(), payment=(), accelerometer=(), gyroscope=(), magnetometer=(), usb=(), serial=(), bluetooth=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), screen-wake-lock=(), idle-detection=()",
+        ),
     );
     headers.insert(
         header::HeaderName::from_static("referrer-policy"),
@@ -293,6 +302,11 @@ fn secure_rng_failure(error: getrandom::Error) -> Response {
         header::HeaderName::from_static("cross-origin-resource-policy"),
         HeaderValue::from_static("cross-origin"),
     );
+    headers.insert(
+        header::HeaderName::from_static("x-permitted-cross-domain-policies"),
+        HeaderValue::from_static("none"),
+    );
+    apply_no_store(headers);
     response
 }
 
@@ -725,9 +739,7 @@ impl RateLimiter {
     }
 
     fn shard_index_for(&self, key: &str) -> usize {
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        hasher.finish() as usize % self.shards.len()
+        stable_shard_hash(key) as usize % self.shards.len()
     }
 
     #[cfg(test)]
@@ -755,6 +767,13 @@ struct Metrics {
     format_jpeg_total: Arc<AtomicU64>,
     format_gif_total: Arc<AtomicU64>,
     format_svg_total: Arc<AtomicU64>,
+}
+
+fn stable_shard_hash(key: &str) -> u64 {
+    let digest = Sha256::digest(key.as_bytes());
+    let mut bytes = [0_u8; 8];
+    bytes.copy_from_slice(&digest[..8]);
+    u64::from_be_bytes(bytes)
 }
 
 #[derive(Serialize)]
@@ -846,6 +865,21 @@ async fn enforce_limits(
                 HeaderValue::from_str(&retry_after_secs.to_string())
                     .unwrap_or_else(|_| HeaderValue::from_static("60")),
             );
+            response.headers_mut().insert(
+                header::HeaderName::from_static("x-ratelimit-limit"),
+                HeaderValue::from_str(&route.limit().to_string())
+                    .unwrap_or_else(|_| HeaderValue::from_static("0")),
+            );
+            response.headers_mut().insert(
+                header::HeaderName::from_static("x-ratelimit-remaining"),
+                HeaderValue::from_static("0"),
+            );
+            response.headers_mut().insert(
+                header::HeaderName::from_static("x-ratelimit-reset"),
+                HeaderValue::from_str(&retry_after_secs.to_string())
+                    .unwrap_or_else(|_| HeaderValue::from_static("60")),
+            );
+            apply_no_store(response.headers_mut());
             Err(response)
         }
     }
@@ -861,11 +895,15 @@ fn client_ip(headers: &HeaderMap, peer_ip: IpAddr, trusted_proxies: &TrustedProx
         return peer_ip.to_string();
     }
 
-    if let Some(ip) = single_ip_header(headers, "cf-connecting-ip") {
+    if let Some(ip) = single_ip_header(headers, "cf-connecting-ip")
+        && is_global_client_ip(ip)
+    {
         return ip.to_string();
     }
 
-    if let Some(ip) = single_ip_header(headers, "x-real-ip") {
+    if let Some(ip) = single_ip_header(headers, "x-real-ip")
+        && is_global_client_ip(ip)
+    {
         return ip.to_string();
     }
 
@@ -876,12 +914,57 @@ fn client_ip(headers: &HeaderMap, peer_ip: IpAddr, trusted_proxies: &TrustedProx
         for candidate in value.split(',').rev() {
             if let Ok(ip) = candidate.trim().parse::<IpAddr>().map(normalize_ip)
                 && !trusted_proxies.contains(ip)
+                && is_global_client_ip(ip)
             {
                 return ip.to_string();
             }
         }
     }
     peer_ip.to_string()
+}
+
+fn is_global_client_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            let [a, b, c, d] = ip.octets();
+            if ip.is_unspecified()
+                || ip.is_loopback()
+                || ip.is_private()
+                || ip.is_link_local()
+                || ip.is_broadcast()
+                || ip.is_documentation()
+                || ip.is_multicast()
+            {
+                return false;
+            }
+
+            if a == 0
+                || a >= 240
+                || (a == 100 && (64..=127).contains(&b))
+                || (a == 198 && (18..=19).contains(&b))
+                || (a == 192 && b == 0 && c == 0 && d == 0)
+            {
+                return false;
+            }
+
+            true
+        }
+        IpAddr::V6(ip) => {
+            let segments = ip.segments();
+            if ip.is_unspecified() || ip.is_loopback() || ip.is_multicast() {
+                return false;
+            }
+
+            if (segments[0] & 0xfe00) == 0xfc00
+                || (segments[0] & 0xffc0) == 0xfe80
+                || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+            {
+                return false;
+            }
+
+            true
+        }
+    }
 }
 
 fn single_ip_header(headers: &HeaderMap, header_name: &'static str) -> Option<IpAddr> {
@@ -1118,12 +1201,13 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
     let identity_options = AvatarIdentityOptions::new(namespace);
     let accessory = request.effective_accessory();
     let expression = request.effective_expression();
+    let identity_cache_key = sha256_hex(identity);
     let cache_key = format!(
         "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
         request.namespace_tenant,
         request.namespace_style,
         DEFAULT_HASH_ALGORITHM,
-        identity,
+        identity_cache_key,
         request.kind,
         request.background,
         accessory,
@@ -1269,26 +1353,61 @@ fn clamp_s3_presign_ttl_seconds(ttl: u64) -> u64 {
     ttl.clamp(MIN_S3_PRESIGN_TTL_SECONDS, MAX_S3_PRESIGN_TTL_SECONDS)
 }
 
+fn normalize_s3_prefix(prefix: &str) -> Result<String, String> {
+    let prefix = prefix.trim_matches('/');
+    if prefix.is_empty() {
+        return Err("must not be empty".to_string());
+    }
+    if !prefix
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_' || byte == b'/')
+    {
+        return Err(
+            "must contain only ASCII letters, digits, hyphens, underscores, or slashes".to_string(),
+        );
+    }
+    if prefix.split('/').any(str::is_empty) {
+        return Err("must not contain empty path segments".to_string());
+    }
+
+    Ok(prefix.to_string())
+}
+
+fn apply_no_store(headers: &mut HeaderMap) {
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store, max-age=0"),
+    );
+}
+
 fn bad_request(message: &str) -> Response {
-    (StatusCode::BAD_REQUEST, message.to_string()).into_response()
+    let mut response = (StatusCode::BAD_REQUEST, message.to_string()).into_response();
+    apply_no_store(response.headers_mut());
+    response
 }
 
 fn internal_error(error: impl std::fmt::Display) -> Response {
     tracing::error!(error = %error, "avatar generation failed");
-    (StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERROR_MESSAGE).into_response()
+    let mut response = (StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERROR_MESSAGE).into_response();
+    apply_no_store(response.headers_mut());
+    response
 }
 
 fn request_timeout(message: &str) -> Response {
-    (StatusCode::REQUEST_TIMEOUT, message.to_string()).into_response()
+    let mut response = (StatusCode::REQUEST_TIMEOUT, message.to_string()).into_response();
+    apply_no_store(response.headers_mut());
+    response
 }
 
 fn server_busy() -> Response {
-    (
+    let mut response = (
         StatusCode::SERVICE_UNAVAILABLE,
         [(header::RETRY_AFTER, "1")],
         "server busy, retry shortly",
     )
-        .into_response()
+        .into_response();
+    apply_no_store(response.headers_mut());
+    response
 }
 
 fn draw_rect(image: &mut RgbaImage, x: u32, y: u32, width: u32, height: u32, color: Rgba<u8>) {
@@ -1796,7 +1915,14 @@ fn preset_examples() -> Vec<PresetExample> {
 }
 
 fn preset_examples_json() -> String {
-    serde_json::to_string(&preset_examples()).expect("preset examples should serialize")
+    static PRESET_EXAMPLES_JSON: LazyLock<String> = LazyLock::new(|| {
+        serde_json::to_string(&preset_examples()).unwrap_or_else(|error| {
+            tracing::error!(%error, "failed to serialize preset examples");
+            "[]".to_string()
+        })
+    });
+
+    PRESET_EXAMPLES_JSON.to_string()
 }
 
 fn render_meta_tags(title: &str, description: &str, path: &str, csp_nonce: &CspNonce) -> String {
@@ -2760,7 +2886,7 @@ fn render_docs_html(csp_nonce: &CspNonce) -> String {
   <section class="card">
     <h2>Anonymous IDs</h2>
     <p>Send an internal stable id or a one-way application hash instead of raw personal data.</p>
-  <pre><code>id = sha256(lowercase(email))</code></pre>
+    <pre><code>printf '%s' 'user@example.com' | sha256sum | cut -d' ' -f1</code></pre>
   </section>
   <section class="card">
     <h2>Rate Limits</h2>
@@ -3100,8 +3226,12 @@ impl S3Storage {
             .ok()
             .map(|raw| matches!(raw.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);
-        let prefix =
+        let raw_prefix =
             std::env::var("HASHAVATAR_S3_PREFIX").unwrap_or_else(|_| "avatars".to_string());
+        let prefix =
+            normalize_s3_prefix(&raw_prefix).map_err(|message| -> Box<dyn std::error::Error> {
+                format!("HASHAVATAR_S3_PREFIX: {message}").into()
+            })?;
         let requested_ttl = std::env::var("HASHAVATAR_S3_PRESIGN_TTL_SECONDS")
             .ok()
             .and_then(|raw| raw.parse::<u64>().ok())
@@ -3141,7 +3271,7 @@ impl S3Storage {
         asset: &AvatarAsset,
         metrics: &Metrics,
     ) -> Result<SignedStorageObject, Box<dyn std::error::Error>> {
-        let key = format!("{}/{}", self.prefix.trim_matches('/'), asset.object_key);
+        let key = format!("{}/{}", self.prefix, asset.object_key);
         let exists = match self
             .client
             .head_object()
@@ -3171,6 +3301,7 @@ impl S3Storage {
                 .body(ByteStream::from(asset.body.clone()))
                 .content_type(asset.content_type)
                 .cache_control("public, max-age=31536000, immutable")
+                .server_side_encryption(ServerSideEncryption::Aes256)
                 .send()
                 .await?;
             metrics.storage_write_total.fetch_add(1, Ordering::Relaxed);
@@ -3316,6 +3447,10 @@ mod tests {
         for shard in limiter.shards.iter() {
             assert_eq!(shard.blocking_lock().buckets.cap().get(), 1_024);
         }
+        assert_eq!(
+            format!("{:016x}", stable_shard_hash("avatar:8.8.8.8")),
+            "f0d0ef909ee80665"
+        );
     }
 
     #[test]
@@ -3358,6 +3493,27 @@ mod tests {
             .expect_err("request should be rate limited");
 
         assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store, max-age=0")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("x-ratelimit-limit")
+                .and_then(|value| value.to_str().ok()),
+            Some("30")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("x-ratelimit-remaining")
+                .and_then(|value| value.to_str().ok()),
+            Some("0")
+        );
         let retry_after = response
             .headers()
             .get(header::RETRY_AFTER)
@@ -3391,6 +3547,17 @@ mod tests {
     }
 
     #[test]
+    fn s3_prefix_is_normalized_and_restricted() {
+        assert_eq!(
+            normalize_s3_prefix("/avatars/prod/").as_deref(),
+            Ok("avatars/prod")
+        );
+        assert!(normalize_s3_prefix("../secrets").is_err());
+        assert!(normalize_s3_prefix("avatars//prod").is_err());
+        assert!(normalize_s3_prefix("/").is_err());
+    }
+
+    #[test]
     fn s3_head_object_errors_are_not_collapsed_to_cache_miss() {
         let source = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"));
         let store_source = source
@@ -3401,6 +3568,7 @@ mod tests {
 
         assert!(store_source.contains("as_service_error()"));
         assert!(store_source.contains("is_not_found()"));
+        assert!(store_source.contains("server_side_encryption(ServerSideEncryption::Aes256)"));
         assert!(!store_source.contains(".await\n            .is_ok()"));
     }
 
@@ -3524,6 +3692,20 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some("max-age=31536000; includeSubDomains")
         );
+        let permissions_policy = html_response
+            .headers()
+            .get("permissions-policy")
+            .and_then(|value| value.to_str().ok())
+            .expect("permissions policy header");
+        assert!(permissions_policy.contains("usb=()"));
+        assert!(permissions_policy.contains("clipboard-read=()"));
+        assert_eq!(
+            html_response
+                .headers()
+                .get("x-permitted-cross-domain-policies")
+                .and_then(|value| value.to_str().ok()),
+            Some("none")
+        );
 
         let mut image_headers = cache_headers("\"etag\"");
         apply_security_headers(
@@ -3545,6 +3727,24 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some("max-age=31536000; includeSubDomains")
         );
+    }
+
+    #[test]
+    fn error_responses_are_not_cacheable() {
+        for response in [
+            bad_request("bad"),
+            internal_error("detail"),
+            request_timeout("timeout"),
+            server_busy(),
+        ] {
+            assert_eq!(
+                response
+                    .headers()
+                    .get(header::CACHE_CONTROL)
+                    .and_then(|value| value.to_str().ok()),
+                Some("no-store, max-age=0")
+            );
+        }
     }
 
     #[test]
@@ -3741,7 +3941,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             "x-forwarded-for",
-            HeaderValue::from_static("::ffff:203.0.113.99, ::ffff:10.89.42.10"),
+            HeaderValue::from_static("::ffff:8.8.8.8, ::ffff:10.89.42.10"),
         );
         let trusted_proxies = TrustedProxies::parse("10.89.42.0/24").expect("trusted proxy CIDR");
 
@@ -3749,7 +3949,7 @@ mod tests {
         assert!(trusted_proxies.contains(mapped_proxy));
         assert_eq!(
             client_ip(&headers, mapped_proxy, &trusted_proxies),
-            "203.0.113.99"
+            "8.8.8.8"
         );
         assert_eq!(
             client_ip(&HeaderMap::new(), mapped_peer, &TrustedProxies::default()),
@@ -3762,16 +3962,13 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             "x-forwarded-for",
-            HeaderValue::from_static("203.0.113.99, 10.89.42.10"),
+            HeaderValue::from_static("8.8.8.8, 10.89.42.10"),
         );
 
         let peer_ip = IpAddr::from([10, 89, 42, 10]);
         let trusted_proxies = TrustedProxies::parse("10.89.42.0/24").expect("trusted proxy CIDR");
 
-        assert_eq!(
-            client_ip(&headers, peer_ip, &trusted_proxies),
-            "203.0.113.99"
-        );
+        assert_eq!(client_ip(&headers, peer_ip, &trusted_proxies), "8.8.8.8");
     }
 
     #[test]
@@ -3779,15 +3976,31 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             "x-forwarded-for",
-            HeaderValue::from_static("192.0.2.123, 203.0.113.99, 10.89.42.10"),
+            HeaderValue::from_static("192.0.2.123, 8.8.8.8, 10.89.42.10"),
         );
 
         let peer_ip = IpAddr::from([10, 89, 42, 10]);
         let trusted_proxies = TrustedProxies::parse("10.89.42.0/24").expect("trusted proxy CIDR");
 
+        assert_eq!(client_ip(&headers, peer_ip, &trusted_proxies), "8.8.8.8");
+    }
+
+    #[test]
+    fn client_ip_rejects_reserved_forwarded_addresses_from_trusted_proxies() {
+        let trusted_proxies = TrustedProxies::parse("10.89.42.0/24").expect("trusted proxy CIDR");
+        let peer_ip = IpAddr::from([10, 89, 42, 10]);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("cf-connecting-ip", HeaderValue::from_static("127.0.0.1"));
+        headers.insert("x-real-ip", HeaderValue::from_static("10.0.0.1"));
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("192.168.1.10, 203.0.113.99, 10.89.42.10"),
+        );
+
         assert_eq!(
             client_ip(&headers, peer_ip, &trusted_proxies),
-            "203.0.113.99"
+            "10.89.42.10"
         );
     }
 
@@ -3986,6 +4199,20 @@ mod tests {
 
         assert_eq!(asset.content_type, "image/webp");
         assert!(asset.body.starts_with(b"RIFF"));
+    }
+
+    #[test]
+    fn cache_key_hashes_identity_boundaries() {
+        let mut request = test_avatar_request(AvatarRequestFormat::Webp);
+        request.identity = "user:cat:themed:webp".to_string();
+        let asset = build_avatar_asset(&request).expect("avatar should render");
+
+        assert!(
+            asset
+                .cache_key
+                .contains(&sha256_hex("user:cat:themed:webp"))
+        );
+        assert!(!asset.cache_key.contains("user:cat:themed:webp"));
     }
 
     #[test]

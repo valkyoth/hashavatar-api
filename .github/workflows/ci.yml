@@ -32,7 +32,7 @@ jobs:
           cache-on-failure: true
 
       - name: Install security tools
-        uses: taiki-e/install-action@v2.80.0
+        uses: taiki-e/install-action@v2.81.8
         with:
           tool: cargo-deny,cargo-audit,cargo-sbom
 

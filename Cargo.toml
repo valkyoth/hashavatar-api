@@ -10,7 +10,7 @@ homepage = "https://github.com/valkyoth/hashavatar-api"
 documentation = "https://github.com/valkyoth/hashavatar-api"
 
 [dependencies]
-aws-config = { version = "1.8.17", default-features = false, features = ["rt-tokio"] }
+aws-config = { version = "1.8.18", default-features = false, features = ["rt-tokio"] }
 aws-sdk-s3 = { version = "1.134.0", default-features = false, features = ["rt-tokio", "sigv4a"] }
 hashavatar = "1.0.2"
 image = { version = "0.25.10", default-features = false, features = ["png"] }

@@ -23,7 +23,7 @@ services:
       - hashavatar
 
   fluxheim:
-    image: ghcr.io/valkyoth/fluxheim:v1.0.0-wolfi
+    image: ghcr.io/valkyoth/fluxheim:v1.5.14-wolfi
     container_name: hashavatar-fluxheim
     restart: unless-stopped
     stop_signal: SIGTERM

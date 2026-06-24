@@ -53,3 +53,8 @@ preset_suffix = "umzekelo"
 
 [footer]
 copy = "hashavatar.app yi deterministic avatar API kunye ne demo service eyakhiwe nge open-source hashavatar Rust crate."
+
+[pages.privacy]
+translations = "Inqaku lenguqulelo"
+translations_text = "Iinguqulelo ze website zincediswe yi-AI kwaye zenziwe nge best effort. Ukuba ubona wording ekufuneka iphuculwe, contributions kwi-GitHub zamkelekile."
+translations_link = "Phucula iinguqulelo"

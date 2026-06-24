@@ -53,3 +53,8 @@ preset_suffix = "ohatra"
 
 [footer]
 copy = "hashavatar.app dia deterministic avatar API sy demo service naorina amin'ny open-source hashavatar Rust crate."
+
+[pages.privacy]
+translations = "Fanamarihana momba ny fandikan-teny"
+translations_text = "Ny fandikan-tenin'ny website dia AI-assisted ary natao amin'ny best effort. Raha mahita wording tokony hatsaraina ianao, contributions ao amin'ny GitHub dia raisina an-tanan-droa."
+translations_link = "Hatsarao ny fandikan-teny"

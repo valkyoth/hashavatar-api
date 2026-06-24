@@ -53,3 +53,8 @@ preset_suffix = "urugero"
 
 [footer]
 copy = "hashavatar.app ni deterministic avatar API na demo service yubatswe na open-source hashavatar Rust crate."
+
+[pages.privacy]
+translations = "Icyitonderwa ku buhinduzi"
+translations_text = "Ubusobanuro bwa website bufashijwe na AI kandi bukozwe ku buryo bwa best effort. Nubonamo wording ikwiye kunozwa, contributions kuri GitHub zirakirwa neza."
+translations_link = "Nonoza ubuhinduzi"

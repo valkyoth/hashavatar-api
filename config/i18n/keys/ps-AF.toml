@@ -53,3 +53,8 @@ preset_suffix = "بېلګه"
 
 [footer]
 copy = "hashavatar.app یو deterministic avatar API او demo service دی، چې د open-source hashavatar Rust crate سره جوړ شوی."
+
+[pages.privacy]
+translations = "د ژباړې یادونه"
+translations_text = "د website ژباړې AI-assisted او best effort دي. که داسې wording ووینې چې ښه کېدای شي، په GitHub کې contributions هرکلی کېږي."
+translations_link = "ژباړې ښه کړه"

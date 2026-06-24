@@ -53,3 +53,8 @@ preset_suffix = "mînak"
 
 [footer]
 copy = "hashavatar.app deterministic avatar API û demo service e, bi open-source hashavatar Rust crate hatiye çêkirin."
+
+[pages.privacy]
+translations = "Têbîniya wergerê"
+translations_text = "Wergerên website bi AI-assisted û best effort hatine çêkirin. Heke wordingek bibînî ku divê çêtir bibe, contributions li GitHub bi xêr hatin."
+translations_link = "Wergeran baştir bike"

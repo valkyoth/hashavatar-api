@@ -133,3 +133,6 @@ avoid = "அனுப்பாமல் இருக்க வேண்டிய
 avoid_text = "Email-shaped identifiers compatibility-க்காக accepted, ஆனால் URLs infrastructure logs-ல் தோன்றலாம். Request URL-ல் personal data வைக்க தவிர்க்க stable internal id அல்லது one-way application hash அனுப்புங்கள்."
 repository = "Repository மற்றும் crate"
 repository_text = "Public API repository-ல் implementation-ஐ, Rust crate-ல் reusable avatar renderer-ஐ inspect செய்யலாம்."
+translations = "மொழிபெயர்ப்பு குறிப்பு"
+translations_text = "இணையதள மொழிபெயர்ப்புகள் AI உதவியுடன் சிறந்த முயற்சியாக வழங்கப்படுகின்றன. மேம்படுத்த வேண்டிய சொற்களைப் பார்த்தால் GitHub-ல் பங்களிப்புகள் வரவேற்கப்படுகின்றன."
+translations_link = "மொழிபெயர்ப்புகளை மேம்படுத்து"

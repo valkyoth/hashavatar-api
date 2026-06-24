@@ -4666,6 +4666,10 @@ fn render_privacy_html(csp_nonce: &CspNonce, telemetry_enabled: bool, i18n: I18n
   <h2>{repository}</h2>
   <p>{repository_text} <a class="inline-link" href="https://github.com/valkyoth/hashavatar-api" target="_blank" rel="noreferrer">{repo_label}</a> · <a class="inline-link" href="https://crates.io/crates/hashavatar/" target="_blank" rel="noreferrer">{crate_label}</a></p>
 </section>
+<section class="card">
+  <h2>{translations}</h2>
+  <p>{translations_text} <a class="inline-link" href="https://github.com/valkyoth/hashavatar-api/tree/main/config/i18n/keys" target="_blank" rel="noreferrer">{translations_link}</a></p>
+</section>
 "#,
             receives = i18n.t_attr("pages.privacy.receives", "What The Service Receives"),
             receives_identity = i18n.t_attr("pages.privacy.receives_identity", "the opaque identifier you put in the request, such as an internal id, username, or one-way hash"),
@@ -4683,6 +4687,9 @@ fn render_privacy_html(csp_nonce: &CspNonce, telemetry_enabled: bool, i18n: I18n
             avoid_text = i18n.t_attr("pages.privacy.avoid_text", "Email-shaped identifiers are accepted for compatibility, but URLs can appear in infrastructure logs."),
             repository = i18n.t_attr("pages.privacy.repository", "Repository And Crate"),
             repository_text = i18n.t_attr("pages.privacy.repository_text", "You can inspect the implementation in the public API repository and the reusable avatar renderer in the Rust crate."),
+            translations = i18n.t_attr("pages.privacy.translations", "Translation Notice"),
+            translations_text = i18n.t_attr("pages.privacy.translations_text", "Website translations are AI-assisted and best effort. If you see wording that should be improved, contributions are welcome on GitHub."),
+            translations_link = i18n.t_attr("pages.privacy.translations_link", "Improve translations"),
             repo_label = i18n.t_attr("nav.repository", "Repository"),
             crate_label = i18n.t_attr("nav.rust_crate", "Rust Crate"),
         ),
@@ -5928,6 +5935,12 @@ mod tests {
         assert!(html.contains("does not include raw identifiers"));
         assert!(html.contains("IP addresses"));
         assert!(html.contains("full URLs"));
+        assert!(html.contains("Translation Notice"));
+        assert!(html.contains("AI-assisted and best effort"));
+        assert!(
+            html.contains("https://github.com/valkyoth/hashavatar-api/tree/main/config/i18n/keys")
+        );
+        assert!(html.contains("Improve translations"));
     }
 
     #[test]

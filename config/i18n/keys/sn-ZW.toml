@@ -53,3 +53,8 @@ preset_suffix = "muenzaniso"
 
 [footer]
 copy = "hashavatar.app i deterministic avatar API ne demo service yakavakwa ne open-source hashavatar Rust crate."
+
+[pages.privacy]
+translations = "Chiziviso cheshanduro"
+translations_text = "Shanduro dze website dzakabatsirwa neAI uye dzakaitwa ne best effort. Kana ukaona wording inofanira kuvandudzwa, contributions paGitHub dzinogamuchirwa."
+translations_link = "Vandudza shanduro"

@@ -53,3 +53,8 @@ preset_suffix = "نموونە"
 
 [footer]
 copy = "hashavatar.app بریتییە لە deterministic avatar API و demo service کە بە open-source hashavatar Rust crate دروستکراوە."
+
+[pages.privacy]
+translations = "تێبینی وەرگێڕان"
+translations_text = "وەرگێڕانی website بە AI-assisted و best effort کراوە. ئەگەر wordingێک ببینیت کە پێویستی بە باشترکردن هەیە، contributions لە GitHub بەخێربێن."
+translations_link = "وەرگێڕانەکان باشتر بکە"

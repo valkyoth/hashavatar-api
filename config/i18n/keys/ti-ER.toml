@@ -53,3 +53,8 @@ preset_suffix = "ኣብነት"
 
 [footer]
 copy = "hashavatar.app deterministic avatar API እና demo service እዩ፣ ብ open-source hashavatar Rust crate ዝተሃንጸ።"
+
+[pages.privacy]
+translations = "መዘኻኸሪ ትርጉም"
+translations_text = "ትርጉማት website ብ AI-assisted እና best effort ተዳልዮም። ክመሓየሽ ዝግባእ wording እንተርኢኻ፣ contributions ኣብ GitHub ብደስታ ይቕበል።"
+translations_link = "ትርጉማት ኣመሓይሽ"

@@ -2856,15 +2856,38 @@ fn shared_page_styles() -> &'static str {
       position: absolute;
       inset-inline-end: 0;
       bottom: calc(100% + 8px);
-      min-width: 190px;
-      padding: 8px;
+      width: min(320px, calc(100vw - 40px));
+      padding: 10px;
       background: white;
       border: 1px solid var(--line);
       border-radius: 14px;
       box-shadow: 0 18px 40px rgba(82,96,109,0.16);
       display: grid;
-      gap: 4px;
+      gap: 8px;
       z-index: 10;
+    }
+    .language-search {
+      width: 100%;
+      border: 1px solid rgba(82, 96, 109, 0.18);
+      background: rgba(255,255,255,0.96);
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      outline: none;
+    }
+    .language-search:focus {
+      border-color: rgba(217, 122, 66, 0.65);
+      box-shadow: 0 0 0 4px rgba(217, 122, 66, 0.12);
+    }
+    .language-list {
+      display: grid;
+      gap: 4px;
+      max-height: min(260px, 42vh);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-inline-end: 4px;
+      scrollbar-width: thin;
     }
     .language-menu a {
       padding: 8px 10px;
@@ -2877,6 +2900,11 @@ fn shared_page_styles() -> &'static str {
       background: rgba(217, 122, 66, 0.12);
       color: var(--accent-strong);
       text-decoration: none;
+    }
+    .language-empty {
+      color: var(--muted);
+      padding: 8px 10px;
+      font-size: 0.94rem;
     }
     .page {
       padding: 36px;
@@ -3025,11 +3053,53 @@ fn render_language_switcher(i18n: I18n, path: &str) -> String {
     format!(
         r#"<details class="language-switcher">
       <summary aria-label="{label}"><span>{active}</span></summary>
-      <div class="language-menu">{links}</div>
+      <div class="language-menu">
+        <input class="language-search" type="search" aria-label="{search_label}" placeholder="{search_placeholder}" autocomplete="off" spellcheck="false" />
+        <div class="language-list">{links}</div>
+        <div class="language-empty" hidden>{no_results}</div>
+      </div>
     </details>"#,
         label = i18n.t_attr("language.selector_label", "Language"),
+        search_label = i18n.t_attr("language.search_label", "Search language"),
+        search_placeholder = i18n.t_attr("language.search_placeholder", "Search language"),
+        no_results = i18n.t_attr("language.no_results", "No languages found"),
         active = escape_html_attribute(&active_label),
         links = links,
+    )
+}
+
+fn render_language_switcher_script(csp_nonce: &CspNonce) -> String {
+    format!(
+        r#"<script nonce="{nonce}">
+    for (const switcher of document.querySelectorAll(".language-switcher")) {{
+      const search = switcher.querySelector(".language-search");
+      const links = Array.from(switcher.querySelectorAll(".language-list a"));
+      const empty = switcher.querySelector(".language-empty");
+      if (!search || links.length === 0 || !empty) {{
+        continue;
+      }}
+      search.addEventListener("input", () => {{
+        const query = search.value.trim().toLocaleLowerCase();
+        let visible = 0;
+        for (const link of links) {{
+          const matches = link.textContent.toLocaleLowerCase().includes(query);
+          link.hidden = !matches;
+          if (matches) {{
+            visible += 1;
+          }}
+        }}
+        empty.hidden = visible !== 0;
+      }});
+      switcher.addEventListener("toggle", () => {{
+        if (switcher.open) {{
+          search.value = "";
+          search.dispatchEvent(new Event("input"));
+          window.setTimeout(() => search.focus(), 0);
+        }}
+      }});
+    }}
+  </script>"#,
+        nonce = escape_html_attribute(csp_nonce.as_str()),
     )
 }
 
@@ -3610,6 +3680,7 @@ fn render_page_html(params: PageHtmlParams<'_>) -> String {
     </section>
     {footer}
   </main>
+  {language_switcher_script}
   {telemetry_script}
 </body>
 </html>"#,
@@ -3624,6 +3695,7 @@ fn render_page_html(params: PageHtmlParams<'_>) -> String {
         lead = lead,
         body = body,
         footer = render_footer_html(i18n, path),
+        language_switcher_script = render_language_switcher_script(csp_nonce),
         telemetry_script = telemetry_script,
     )
 }
@@ -4009,6 +4081,7 @@ fn render_index_html(
     </section>
     {footer}
   </main>
+  {language_switcher_script}
   {telemetry_script}
   <script nonce="{nonce}">
     const identityEl = document.getElementById("identity");
@@ -4397,6 +4470,7 @@ fn render_index_html(
         copied_json = json_script_string(&i18n.t("form.copied", "Copied"), "Copied"),
         nonce = nonce,
         footer = render_footer_html(i18n, ""),
+        language_switcher_script = render_language_switcher_script(csp_nonce),
         telemetry_script = telemetry_script,
     )
 }
@@ -5796,6 +5870,9 @@ mod tests {
         assert!(html.contains(r#"<html lang="de-DE" dir="ltr">"#));
         assert!(html.contains("Öffentliche Avatare in Sekunden erzeugen"));
         assert!(html.contains(r#"<details class="language-switcher">"#));
+        assert!(html.contains(r#"<input class="language-search" type="search""#));
+        assert!(html.contains(r#"<div class="language-list">"#));
+        assert!(html.contains(r#"document.querySelectorAll(".language-switcher")"#));
         assert!(html.contains(r#"<a href="/">🇪🇺 English (EU)</a>"#));
         assert!(html.contains(r#"<a href="/en-gb/">🇬🇧 English (UK)</a>"#));
         assert!(html.contains(r#"<a href="/en-us/">🇺🇸 English (US)</a>"#));

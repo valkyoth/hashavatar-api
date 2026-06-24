@@ -996,6 +996,12 @@ fn init_otel_metrics(
         .with_http()
         .with_protocol(Protocol::HttpBinary);
     if let Some(endpoint) = otlp_endpoint_from_env() {
+        if !otlp_endpoint_is_secure_or_local(&endpoint) {
+            return Err(format!(
+                "refusing non-local plaintext OTLP endpoint {endpoint}; use HTTPS for remote collectors"
+            )
+            .into());
+        }
         exporter_builder = exporter_builder.with_endpoint(endpoint);
     }
     let metric_exporter = exporter_builder.build()?;
@@ -1035,6 +1041,32 @@ fn otlp_endpoint_from_env() -> Option<String> {
     .find_map(|name| std::env::var(name).ok())
     .map(|value| value.trim().to_string())
     .filter(|value| !value.is_empty())
+}
+
+fn otlp_endpoint_is_secure_or_local(endpoint: &str) -> bool {
+    let endpoint = endpoint.trim().to_ascii_lowercase();
+    if endpoint.starts_with("https://") {
+        return true;
+    }
+
+    let Some(authority_and_path) = endpoint.strip_prefix("http://") else {
+        return false;
+    };
+    let authority = authority_and_path
+        .split_once('/')
+        .map_or(authority_and_path, |(authority, _path)| authority);
+    let host = if let Some(rest) = authority.strip_prefix('[') {
+        rest.split_once(']').map_or(authority, |(host, _port)| host)
+    } else {
+        authority
+            .split_once(':')
+            .map_or(authority, |(host, _port)| host)
+    };
+
+    host == "localhost"
+        || host
+            .parse::<IpAddr>()
+            .is_ok_and(|ip| normalize_ip(ip).is_loopback())
 }
 
 fn parse_env_switch(value: &str) -> Option<bool> {
@@ -1784,8 +1816,16 @@ struct AvatarGenerateTelemetryPayload {
 
 async fn telemetry_page_visible(
     State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(payload): Json<VisibleTelemetryPayload>,
 ) -> Response {
+    if let Err(response) =
+        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::Telemetry).await
+    {
+        return response;
+    }
+
     if !state.observability.enabled() {
         return StatusCode::ACCEPTED.into_response();
     }
@@ -1813,8 +1853,16 @@ async fn telemetry_page_visible(
 
 async fn telemetry_click(
     State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(payload): Json<ClickTelemetryPayload>,
 ) -> Response {
+    if let Err(response) =
+        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::Telemetry).await
+    {
+        return response;
+    }
+
     if !is_allowed_click(&payload.kind, &payload.target) || !is_allowed_locale_id(&payload.locale) {
         return bad_request("invalid telemetry event");
     }
@@ -1826,8 +1874,16 @@ async fn telemetry_click(
 
 async fn telemetry_avatar_generate(
     State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(payload): Json<AvatarGenerateTelemetryPayload>,
 ) -> Response {
+    if let Err(response) =
+        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::Telemetry).await
+    {
+        return response;
+    }
+
     let style = match avatar_telemetry_style_from_payload(&payload) {
         Ok(style) => style,
         Err(message) => return bad_request(message),
@@ -1907,6 +1963,7 @@ enum RateLimitRoute {
     Avatar,
     StorageLink,
     OgImage,
+    Telemetry,
 }
 
 impl RateLimitRoute {
@@ -1915,6 +1972,7 @@ impl RateLimitRoute {
             Self::Avatar => "avatar",
             Self::StorageLink => "storage-link",
             Self::OgImage => "og-image",
+            Self::Telemetry => "telemetry",
         }
     }
 
@@ -1923,6 +1981,7 @@ impl RateLimitRoute {
             Self::Avatar => 240,
             Self::StorageLink => 30,
             Self::OgImage => 60,
+            Self::Telemetry => 120,
         }
     }
 }
@@ -1934,8 +1993,9 @@ struct RateLimiter {
 
 #[derive(Clone, Copy)]
 struct RateBucket {
-    started_at: Instant,
-    count: u32,
+    window_start: Instant,
+    previous_count: u32,
+    current_count: u32,
 }
 
 struct RateLimiterState {
@@ -1956,8 +2016,9 @@ impl RateLimiterState {
             self.buckets.push(
                 key.clone(),
                 RateBucket {
-                    started_at: now,
-                    count: 0,
+                    window_start: now,
+                    previous_count: 0,
+                    current_count: 0,
                 },
             );
         }
@@ -2035,19 +2096,37 @@ impl RateLimiter {
 
     async fn check(&self, key: String, limit: u32) -> Result<(), u64> {
         let now = Instant::now();
+        self.check_at(key, limit, now).await
+    }
+
+    async fn check_at(&self, key: String, limit: u32, now: Instant) -> Result<(), u64> {
         let shard_index = self.shard_index_for(&key);
         let mut buckets = self.shards[shard_index].lock().await;
         let bucket = buckets.bucket_for(key, now);
-        if now.duration_since(bucket.started_at) >= RATE_LIMIT_WINDOW {
-            bucket.started_at = now;
-            bucket.count = 0;
+
+        let window_nanos = RATE_LIMIT_WINDOW.as_nanos();
+        let mut elapsed = now.duration_since(bucket.window_start);
+        if elapsed >= RATE_LIMIT_WINDOW + RATE_LIMIT_WINDOW {
+            bucket.window_start = now;
+            bucket.previous_count = 0;
+            bucket.current_count = 0;
+            elapsed = Duration::ZERO;
+        } else if elapsed >= RATE_LIMIT_WINDOW {
+            bucket.window_start += RATE_LIMIT_WINDOW;
+            bucket.previous_count = bucket.current_count;
+            bucket.current_count = 0;
+            elapsed = now.duration_since(bucket.window_start);
         }
-        if bucket.count >= limit {
-            let elapsed = now.duration_since(bucket.started_at);
+
+        let remaining_nanos = RATE_LIMIT_WINDOW.saturating_sub(elapsed).as_nanos();
+        let effective_scaled = u128::from(bucket.previous_count) * remaining_nanos
+            + u128::from(bucket.current_count) * window_nanos;
+        let limit_scaled = u128::from(limit) * window_nanos;
+        if effective_scaled >= limit_scaled {
             let remaining = RATE_LIMIT_WINDOW.saturating_sub(elapsed).as_secs().max(1);
             return Err(remaining);
         }
-        bucket.count += 1;
+        bucket.current_count = bucket.current_count.saturating_add(1);
         Ok(())
     }
 
@@ -3690,9 +3769,9 @@ fn render_page_html(params: PageHtmlParams<'_>) -> String {
         html_lang = escape_html_attribute(i18n.html_lang()),
         dir = escape_html_attribute(i18n.dir()),
         nav = render_nav_html(i18n),
-        eyebrow = eyebrow,
-        page_title = page_title,
-        lead = lead,
+        eyebrow = escape_html_attribute(&eyebrow),
+        page_title = escape_html_attribute(&page_title),
+        lead = escape_html_attribute(&lead),
         body = body,
         footer = render_footer_html(i18n, path),
         language_switcher_script = render_language_switcher_script(csp_nonce),
@@ -4940,6 +5019,9 @@ impl AvatarRequest {
         validate_identity(self.identity.trim())?;
         validate_namespace_component("tenant", &self.namespace_tenant)?;
         validate_namespace_component("style_version", &self.namespace_style)?;
+        if !(MIN_SIZE..=MAX_SIZE).contains(&self.size) {
+            return Err(format!("size must be between {MIN_SIZE} and {MAX_SIZE}"));
+        }
         Ok(())
     }
 
@@ -5161,6 +5243,40 @@ mod tests {
             .check(key, 2)
             .await
             .expect_err("third request should be rate limited");
+        assert!((1..=60).contains(&retry_after));
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_smooths_window_boundary_bursts() {
+        let limiter = RateLimiter::with_capacity(8);
+        let key = "avatar:127.0.0.1".to_string();
+        let start = Instant::now();
+
+        assert!(limiter.check_at(key.clone(), 4, start).await.is_ok());
+        assert!(
+            limiter
+                .check_at(key.clone(), 4, start + Duration::from_secs(58))
+                .await
+                .is_ok()
+        );
+        assert!(
+            limiter
+                .check_at(key.clone(), 4, start + Duration::from_secs(59))
+                .await
+                .is_ok()
+        );
+        assert!(
+            limiter
+                .check_at(key.clone(), 4, start + Duration::from_secs(59))
+                .await
+                .is_ok()
+        );
+
+        let retry_after = limiter
+            .check_at(key, 4, start + RATE_LIMIT_WINDOW)
+            .await
+            .expect_err("previous-window traffic should still count at the boundary");
+
         assert!((1..=60).contains(&retry_after));
     }
 
@@ -5408,6 +5524,28 @@ mod tests {
     }
 
     #[test]
+    fn otlp_endpoint_requires_https_except_local_collectors() {
+        assert!(otlp_endpoint_is_secure_or_local(
+            "https://collector.example.com/v1/metrics"
+        ));
+        assert!(otlp_endpoint_is_secure_or_local(
+            "http://localhost:4318/v1/metrics"
+        ));
+        assert!(otlp_endpoint_is_secure_or_local(
+            "http://127.0.0.1:4318/v1/metrics"
+        ));
+        assert!(otlp_endpoint_is_secure_or_local(
+            "http://[::1]:4318/v1/metrics"
+        ));
+        assert!(!otlp_endpoint_is_secure_or_local(
+            "http://localhost.example.com/v1/metrics"
+        ));
+        assert!(!otlp_endpoint_is_secure_or_local(
+            "http://collector.example.com/v1/metrics"
+        ));
+    }
+
+    #[test]
     fn visible_page_events_are_allow_listed_and_clamped() {
         let event = Observability::validate_visible_event(VisiblePageEvent {
             route: "/".to_string(),
@@ -5497,6 +5635,48 @@ mod tests {
             })
             .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn telemetry_endpoints_are_rate_limited() {
+        let state = AppState {
+            storage: None,
+            trusted_proxies: TrustedProxies::default(),
+            rate_limiter: RateLimiter::with_capacity(64),
+            metrics: Metrics::default(),
+            observability: Observability::disabled(),
+        };
+        let peer_addr = ConnectInfo("127.0.0.1:8080".parse().expect("peer address"));
+        let headers = HeaderMap::new();
+
+        for _ in 0..RateLimitRoute::Telemetry.limit() {
+            let response = telemetry_click(
+                State(state.clone()),
+                peer_addr,
+                headers.clone(),
+                Json(ClickTelemetryPayload {
+                    kind: "action".to_string(),
+                    target: "copy-url".to_string(),
+                    locale: "en-EU".to_string(),
+                }),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::ACCEPTED);
+        }
+
+        let response = telemetry_click(
+            State(state),
+            peer_addr,
+            headers,
+            Json(ClickTelemetryPayload {
+                kind: "action".to_string(),
+                target: "copy-url".to_string(),
+                locale: "en-EU".to_string(),
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
     }
 
     #[tokio::test]
@@ -5859,6 +6039,30 @@ mod tests {
         assert!(!html.contains("window.hashavatarTelemetry ="));
         assert!(!html.contains("/telemetry/page-visible"));
         assert!(!html.contains("/telemetry/avatar-generate"));
+    }
+
+    #[test]
+    fn shared_page_heading_text_is_escaped() {
+        let nonce = CspNonce("testnonce".to_string());
+        let html = render_page_html(PageHtmlParams {
+            page_title: "<img src=x>".to_string(),
+            description: "Escaping test".to_string(),
+            path: "/help",
+            eyebrow: "<b>Guide</b>".to_string(),
+            lead: "Use <a href=\"https://example.com\">links</a> carefully".to_string(),
+            body: "<section class=\"card\"><p>Trusted body markup</p></section>".to_string(),
+            csp_nonce: &nonce,
+            telemetry_enabled: false,
+            i18n: i18n(default_locale()),
+        });
+
+        assert!(html.contains("&lt;img src=x&gt;"));
+        assert!(html.contains("&lt;b&gt;Guide&lt;/b&gt;"));
+        assert!(html.contains(
+            "Use &lt;a href=&quot;https://example.com&quot;&gt;links&lt;/a&gt; carefully"
+        ));
+        assert!(!html.contains("<h1><img src=x></h1>"));
+        assert!(!html.contains(r#"<a href="https://example.com">links</a>"#));
     }
 
     #[test]
@@ -6502,6 +6706,32 @@ mod tests {
         .expect_err("non-webp format should be rejected");
 
         assert_eq!(error, INVALID_AVATAR_FORMAT_MESSAGE);
+    }
+
+    #[test]
+    fn avatar_request_rejects_invalid_size_before_rendering() {
+        let error = AvatarRequest::from_query(AvatarQuery {
+            algorithm: None,
+            id: Some(DEFAULT_ID.to_string()),
+            kind: None,
+            background: None,
+            accessory: None,
+            color: None,
+            expression: None,
+            shape: None,
+            format: None,
+            size: Some(MAX_SIZE + 1),
+            tenant: None,
+            style_version: None,
+            persist: None,
+            redirect: None,
+        })
+        .expect_err("oversized request should be rejected during request validation");
+
+        assert_eq!(
+            error,
+            format!("size must be between {MIN_SIZE} and {MAX_SIZE}")
+        );
     }
 
     #[test]

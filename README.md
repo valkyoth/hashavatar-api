@@ -44,7 +44,9 @@ Implemented now:
   Icelandic, Spanish, Portuguese, Italian, Japanese, Simplified Chinese,
   Traditional Chinese, Vietnamese, Thai, Hindi, Bengali, Tamil, Esperanto,
   Danish, Latin, Swiss German, Korean, Russian, Ukrainian, Flemish, Belgian
-  French, Canadian French, and Canadian English.
+  French, Canadian French, Canadian English, Turkish, Lithuanian, Latvian,
+  Polish, Greek, Hungarian, Estonian, Elfdalian, Bulgarian, Czech, Croatian,
+  Belarusian, Irish, Luxembourgish, Romanian, and Serbian.
 - Local gates for formatting, clippy, tests, security invariants, dependency
   policy, RustSec advisories, local smoke testing, SBOM generation, and
   reproducible release builds.
@@ -287,12 +289,31 @@ other website locales use stable prefixes:
 - `/fr-be/` for Belgian French
 - `/fr-ca/` for Canadian French
 - `/en-ca/` for Canadian English
+- `/tr/` for Turkish
+- `/lt/` for Lithuanian
+- `/lv/` for Latvian
+- `/pl/` for Polish
+- `/el/` for Greek
+- `/hu/` for Hungarian
+- `/et/` for Estonian
+- `/ovd/` for Elfdalian
+- `/bg/` for Bulgarian
+- `/cs/` for Czech
+- `/hr/` for Croatian
+- `/be/` for Belarusian
+- `/ga/` for Irish
+- `/lb/` for Luxembourgish
+- `/ro/` for Romanian
+- `/sr/` for Serbian
 
 Locale configuration lives in [config/locales.toml](config/locales.toml), and
 translated website keys live in [config/i18n/keys](config/i18n/keys). The
 language menu uses normal links and does not set cookies. Locale selection only
 changes website text, navigation, and telemetry locale labels; avatar API URLs,
 identity values, and rendering parameters stay unchanged.
+
+The Elfdalian (`/ovd/`) locale is a best-effort translation and should be
+reviewed by a native speaker before being treated as authoritative.
 
 ## Testing And Release Evidence
 

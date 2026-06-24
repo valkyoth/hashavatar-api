@@ -103,6 +103,22 @@ const GSW_CH_KEYS_TOML: &str = include_str!("../config/i18n/keys/gsw-CH.toml");
 const KO_KR_KEYS_TOML: &str = include_str!("../config/i18n/keys/ko-KR.toml");
 const RU_RU_KEYS_TOML: &str = include_str!("../config/i18n/keys/ru-RU.toml");
 const UK_UA_KEYS_TOML: &str = include_str!("../config/i18n/keys/uk-UA.toml");
+const TR_TR_KEYS_TOML: &str = include_str!("../config/i18n/keys/tr-TR.toml");
+const LT_LT_KEYS_TOML: &str = include_str!("../config/i18n/keys/lt-LT.toml");
+const LV_LV_KEYS_TOML: &str = include_str!("../config/i18n/keys/lv-LV.toml");
+const PL_PL_KEYS_TOML: &str = include_str!("../config/i18n/keys/pl-PL.toml");
+const EL_GR_KEYS_TOML: &str = include_str!("../config/i18n/keys/el-GR.toml");
+const HU_HU_KEYS_TOML: &str = include_str!("../config/i18n/keys/hu-HU.toml");
+const ET_EE_KEYS_TOML: &str = include_str!("../config/i18n/keys/et-EE.toml");
+const OVD_SE_KEYS_TOML: &str = include_str!("../config/i18n/keys/ovd-SE.toml");
+const BG_BG_KEYS_TOML: &str = include_str!("../config/i18n/keys/bg-BG.toml");
+const CS_CZ_KEYS_TOML: &str = include_str!("../config/i18n/keys/cs-CZ.toml");
+const HR_HR_KEYS_TOML: &str = include_str!("../config/i18n/keys/hr-HR.toml");
+const BE_BY_KEYS_TOML: &str = include_str!("../config/i18n/keys/be-BY.toml");
+const GA_IE_KEYS_TOML: &str = include_str!("../config/i18n/keys/ga-IE.toml");
+const LB_LU_KEYS_TOML: &str = include_str!("../config/i18n/keys/lb-LU.toml");
+const RO_RO_KEYS_TOML: &str = include_str!("../config/i18n/keys/ro-RO.toml");
+const SR_RS_KEYS_TOML: &str = include_str!("../config/i18n/keys/sr-RS.toml");
 
 static RENDER_SLOTS: LazyLock<Arc<Semaphore>> =
     LazyLock::new(|| Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS)));
@@ -191,6 +207,38 @@ static RU_RU_KEYS: LazyLock<toml::Value> =
     LazyLock::new(|| parse_locale_keys("ru-RU", RU_RU_KEYS_TOML));
 static UK_UA_KEYS: LazyLock<toml::Value> =
     LazyLock::new(|| parse_locale_keys("uk-UA", UK_UA_KEYS_TOML));
+static TR_TR_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("tr-TR", TR_TR_KEYS_TOML));
+static LT_LT_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("lt-LT", LT_LT_KEYS_TOML));
+static LV_LV_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("lv-LV", LV_LV_KEYS_TOML));
+static PL_PL_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("pl-PL", PL_PL_KEYS_TOML));
+static EL_GR_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("el-GR", EL_GR_KEYS_TOML));
+static HU_HU_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("hu-HU", HU_HU_KEYS_TOML));
+static ET_EE_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("et-EE", ET_EE_KEYS_TOML));
+static OVD_SE_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ovd-SE", OVD_SE_KEYS_TOML));
+static BG_BG_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("bg-BG", BG_BG_KEYS_TOML));
+static CS_CZ_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("cs-CZ", CS_CZ_KEYS_TOML));
+static HR_HR_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("hr-HR", HR_HR_KEYS_TOML));
+static BE_BY_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("be-BY", BE_BY_KEYS_TOML));
+static GA_IE_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ga-IE", GA_IE_KEYS_TOML));
+static LB_LU_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("lb-LU", LB_LU_KEYS_TOML));
+static RO_RO_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ro-RO", RO_RO_KEYS_TOML));
+static SR_RS_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("sr-RS", SR_RS_KEYS_TOML));
 
 fn validate_locale_config(config: &LocaleConfig) -> Result<(), String> {
     if config.default_locale != DEFAULT_LOCALE_ID {
@@ -292,6 +340,22 @@ fn locale_keys(locale_id: &str) -> &'static toml::Value {
         "ko-KR" => &KO_KR_KEYS,
         "ru-RU" => &RU_RU_KEYS,
         "uk-UA" => &UK_UA_KEYS,
+        "tr-TR" => &TR_TR_KEYS,
+        "lt-LT" => &LT_LT_KEYS,
+        "lv-LV" => &LV_LV_KEYS,
+        "pl-PL" => &PL_PL_KEYS,
+        "el-GR" => &EL_GR_KEYS,
+        "hu-HU" => &HU_HU_KEYS,
+        "et-EE" => &ET_EE_KEYS,
+        "ovd-SE" => &OVD_SE_KEYS,
+        "bg-BG" => &BG_BG_KEYS,
+        "cs-CZ" => &CS_CZ_KEYS,
+        "hr-HR" => &HR_HR_KEYS,
+        "be-BY" => &BE_BY_KEYS,
+        "ga-IE" => &GA_IE_KEYS,
+        "lb-LU" => &LB_LU_KEYS,
+        "ro-RO" => &RO_RO_KEYS,
+        "sr-RS" => &SR_RS_KEYS,
         "nl-BE" => &NL_NL_KEYS,
         "fr-BE" | "fr-CA" => &FR_FR_KEYS,
         "en-CA" => &EN_GB_KEYS,
@@ -5030,7 +5094,9 @@ mod tests {
         assert!(is_allowed_locale_id("de-DE"));
         assert!(is_allowed_locale_id("es-ES"));
         assert!(is_allowed_locale_id("it-IT"));
-        assert!(!is_allowed_locale_id("pl-PL"));
+        assert!(is_allowed_locale_id("pl-PL"));
+        assert!(is_allowed_locale_id("cs-CZ"));
+        assert!(!is_allowed_locale_id("sk-SK"));
     }
 
     #[test]
@@ -5137,7 +5203,7 @@ mod tests {
     #[test]
     fn locale_config_loads_requested_languages() {
         assert_eq!(default_locale().locale_id, "en-EU");
-        assert_eq!(locales().len(), 32);
+        assert_eq!(locales().len(), 48);
         assert_eq!(locale_by_prefix("en-gb").unwrap().locale_id, "en-GB");
         assert_eq!(locale_by_prefix("en-us").unwrap().locale_id, "en-US");
         assert_eq!(locale_by_prefix("fr").unwrap().display_name, "Français");
@@ -5181,7 +5247,26 @@ mod tests {
             locale_by_prefix("en-ca").unwrap().display_name,
             "English (Canada)"
         );
-        assert!(locale_by_prefix("pl").is_none());
+        assert_eq!(locale_by_prefix("tr").unwrap().display_name, "Türkçe");
+        assert_eq!(locale_by_prefix("lt").unwrap().display_name, "Lietuvių");
+        assert_eq!(locale_by_prefix("lv").unwrap().display_name, "Latviešu");
+        assert_eq!(locale_by_prefix("pl").unwrap().display_name, "Polski");
+        assert_eq!(locale_by_prefix("el").unwrap().display_name, "Ελληνικά");
+        assert_eq!(locale_by_prefix("hu").unwrap().display_name, "Magyar");
+        assert_eq!(locale_by_prefix("et").unwrap().display_name, "Eesti");
+        assert_eq!(locale_by_prefix("ovd").unwrap().display_name, "Övdalsk");
+        assert_eq!(locale_by_prefix("bg").unwrap().display_name, "Български");
+        assert_eq!(locale_by_prefix("cs").unwrap().display_name, "Čeština");
+        assert_eq!(locale_by_prefix("hr").unwrap().display_name, "Hrvatski");
+        assert_eq!(locale_by_prefix("be").unwrap().display_name, "Беларуская");
+        assert_eq!(locale_by_prefix("ga").unwrap().display_name, "Gaeilge");
+        assert_eq!(
+            locale_by_prefix("lb").unwrap().display_name,
+            "Lëtzebuergesch"
+        );
+        assert_eq!(locale_by_prefix("ro").unwrap().display_name, "Română");
+        assert_eq!(locale_by_prefix("sr").unwrap().display_name, "Српски");
+        assert!(locale_by_prefix("sk").is_none());
     }
 
     #[test]
@@ -5359,6 +5444,22 @@ mod tests {
         assert!(html.contains(r#"<a href="/fr-be/">🇧🇪 Français (Belgique)</a>"#));
         assert!(html.contains(r#"<a href="/fr-ca/">🇨🇦 Français (Canada)</a>"#));
         assert!(html.contains(r#"<a href="/en-ca/">🇨🇦 English (Canada)</a>"#));
+        assert!(html.contains(r#"<a href="/tr/">🇹🇷 Türkçe</a>"#));
+        assert!(html.contains(r#"<a href="/lt/">🇱🇹 Lietuvių</a>"#));
+        assert!(html.contains(r#"<a href="/lv/">🇱🇻 Latviešu</a>"#));
+        assert!(html.contains(r#"<a href="/pl/">🇵🇱 Polski</a>"#));
+        assert!(html.contains(r#"<a href="/el/">🇬🇷 Ελληνικά</a>"#));
+        assert!(html.contains(r#"<a href="/hu/">🇭🇺 Magyar</a>"#));
+        assert!(html.contains(r#"<a href="/et/">🇪🇪 Eesti</a>"#));
+        assert!(html.contains(r#"<a href="/ovd/">🇸🇪 Övdalsk</a>"#));
+        assert!(html.contains(r#"<a href="/bg/">🇧🇬 Български</a>"#));
+        assert!(html.contains(r#"<a href="/cs/">🇨🇿 Čeština</a>"#));
+        assert!(html.contains(r#"<a href="/hr/">🇭🇷 Hrvatski</a>"#));
+        assert!(html.contains(r#"<a href="/be/">🇧🇾 Беларуская</a>"#));
+        assert!(html.contains(r#"<a href="/ga/">🇮🇪 Gaeilge</a>"#));
+        assert!(html.contains(r#"<a href="/lb/">🇱🇺 Lëtzebuergesch</a>"#));
+        assert!(html.contains(r#"<a href="/ro/">🇷🇴 Română</a>"#));
+        assert!(html.contains(r#"<a href="/sr/">🇷🇸 Српски</a>"#));
         assert!(html.contains("/v1/avatar?id=cat@hashavatar.app"));
         assert!(!html.contains("/de/v1/avatar"));
     }

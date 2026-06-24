@@ -223,3 +223,115 @@ html_lang = "en-CA"
 url_prefix = "en-ca"
 display_name = "English (Canada)"
 flag = "🇨🇦"
+
+[[locales]]
+locale_id = "tr-TR"
+html_lang = "tr-TR"
+url_prefix = "tr"
+display_name = "Türkçe"
+flag = "🇹🇷"
+
+[[locales]]
+locale_id = "lt-LT"
+html_lang = "lt-LT"
+url_prefix = "lt"
+display_name = "Lietuvių"
+flag = "🇱🇹"
+
+[[locales]]
+locale_id = "lv-LV"
+html_lang = "lv-LV"
+url_prefix = "lv"
+display_name = "Latviešu"
+flag = "🇱🇻"
+
+[[locales]]
+locale_id = "pl-PL"
+html_lang = "pl-PL"
+url_prefix = "pl"
+display_name = "Polski"
+flag = "🇵🇱"
+
+[[locales]]
+locale_id = "el-GR"
+html_lang = "el-GR"
+url_prefix = "el"
+display_name = "Ελληνικά"
+flag = "🇬🇷"
+
+[[locales]]
+locale_id = "hu-HU"
+html_lang = "hu-HU"
+url_prefix = "hu"
+display_name = "Magyar"
+flag = "🇭🇺"
+
+[[locales]]
+locale_id = "et-EE"
+html_lang = "et-EE"
+url_prefix = "et"
+display_name = "Eesti"
+flag = "🇪🇪"
+
+[[locales]]
+locale_id = "ovd-SE"
+html_lang = "ovd-SE"
+url_prefix = "ovd"
+display_name = "Övdalsk"
+flag = "🇸🇪"
+
+[[locales]]
+locale_id = "bg-BG"
+html_lang = "bg-BG"
+url_prefix = "bg"
+display_name = "Български"
+flag = "🇧🇬"
+
+[[locales]]
+locale_id = "cs-CZ"
+html_lang = "cs-CZ"
+url_prefix = "cs"
+display_name = "Čeština"
+flag = "🇨🇿"
+
+[[locales]]
+locale_id = "hr-HR"
+html_lang = "hr-HR"
+url_prefix = "hr"
+display_name = "Hrvatski"
+flag = "🇭🇷"
+
+[[locales]]
+locale_id = "be-BY"
+html_lang = "be-BY"
+url_prefix = "be"
+display_name = "Беларуская"
+flag = "🇧🇾"
+
+[[locales]]
+locale_id = "ga-IE"
+html_lang = "ga-IE"
+url_prefix = "ga"
+display_name = "Gaeilge"
+flag = "🇮🇪"
+
+[[locales]]
+locale_id = "lb-LU"
+html_lang = "lb-LU"
+url_prefix = "lb"
+display_name = "Lëtzebuergesch"
+flag = "🇱🇺"
+
+[[locales]]
+locale_id = "ro-RO"
+html_lang = "ro-RO"
+url_prefix = "ro"
+display_name = "Română"
+flag = "🇷🇴"
+
+[[locales]]
+locale_id = "sr-RS"
+html_lang = "sr-RS"
+url_prefix = "sr"
+display_name = "Српски"
+flag = "🇷🇸"

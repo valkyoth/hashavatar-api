@@ -594,3 +594,201 @@ html_lang = "am-ET"
 url_prefix = "am"
 display_name = "አማርኛ"
 flag = "🇪🇹"
+
+[[locales]]
+locale_id = "om-ET"
+html_lang = "om-ET"
+url_prefix = "om"
+display_name = "Afaan Oromoo"
+flag = "🇪🇹"
+
+[[locales]]
+locale_id = "so-SO"
+html_lang = "so-SO"
+url_prefix = "so"
+display_name = "Soomaali"
+flag = "🇸🇴"
+
+[[locales]]
+locale_id = "zu-ZA"
+html_lang = "zu-ZA"
+url_prefix = "zu"
+display_name = "isiZulu"
+flag = "🇿🇦"
+
+[[locales]]
+locale_id = "af-ZA"
+html_lang = "af-ZA"
+url_prefix = "af"
+display_name = "Afrikaans"
+flag = "🇿🇦"
+
+[[locales]]
+locale_id = "ca-ES"
+html_lang = "ca-ES"
+url_prefix = "ca"
+display_name = "Català"
+flag = "🇪🇸"
+
+[[locales]]
+locale_id = "eu-ES"
+html_lang = "eu-ES"
+url_prefix = "eu"
+display_name = "Euskara"
+flag = "🇪🇸"
+
+[[locales]]
+locale_id = "gl-ES"
+html_lang = "gl-ES"
+url_prefix = "gl"
+display_name = "Galego"
+flag = "🇪🇸"
+
+[[locales]]
+locale_id = "cy-GB"
+html_lang = "cy-GB"
+url_prefix = "cy"
+display_name = "Cymraeg"
+flag = "🏴"
+
+[[locales]]
+locale_id = "sq-AL"
+html_lang = "sq-AL"
+url_prefix = "sq"
+display_name = "Shqip"
+flag = "🇦🇱"
+
+[[locales]]
+locale_id = "bs-BA"
+html_lang = "bs-BA"
+url_prefix = "bs"
+display_name = "Bosanski"
+flag = "🇧🇦"
+
+[[locales]]
+locale_id = "mk-MK"
+html_lang = "mk-MK"
+url_prefix = "mk"
+display_name = "Македонски"
+flag = "🇲🇰"
+
+[[locales]]
+locale_id = "mt-MT"
+html_lang = "mt-MT"
+url_prefix = "mt"
+display_name = "Malti"
+flag = "🇲🇹"
+
+[[locales]]
+locale_id = "hy-AM"
+html_lang = "hy-AM"
+url_prefix = "hy"
+display_name = "Հայերեն"
+flag = "🇦🇲"
+
+[[locales]]
+locale_id = "ka-GE"
+html_lang = "ka-GE"
+url_prefix = "ka"
+display_name = "ქართული"
+flag = "🇬🇪"
+
+[[locales]]
+locale_id = "az-AZ"
+html_lang = "az-AZ"
+url_prefix = "az"
+display_name = "Azərbaycanca"
+flag = "🇦🇿"
+
+[[locales]]
+locale_id = "kk-KZ"
+html_lang = "kk-KZ"
+url_prefix = "kk"
+display_name = "Қазақша"
+flag = "🇰🇿"
+
+[[locales]]
+locale_id = "uz-UZ"
+html_lang = "uz-UZ"
+url_prefix = "uz"
+display_name = "Oʻzbekcha"
+flag = "🇺🇿"
+
+[[locales]]
+locale_id = "ky-KG"
+html_lang = "ky-KG"
+url_prefix = "ky"
+display_name = "Кыргызча"
+flag = "🇰🇬"
+
+[[locales]]
+locale_id = "tg-TJ"
+html_lang = "tg-TJ"
+url_prefix = "tg"
+display_name = "Тоҷикӣ"
+flag = "🇹🇯"
+
+[[locales]]
+locale_id = "tk-TM"
+html_lang = "tk-TM"
+url_prefix = "tk"
+display_name = "Türkmençe"
+flag = "🇹🇲"
+
+[[locales]]
+locale_id = "ps-AF"
+html_lang = "ps-AF"
+dir = "rtl"
+url_prefix = "ps"
+display_name = "پښتو"
+flag = "🇦🇫"
+
+[[locales]]
+locale_id = "ckb-IQ"
+html_lang = "ckb-IQ"
+dir = "rtl"
+url_prefix = "ckb"
+display_name = "کوردیی ناوەندی"
+flag = "🇮🇶"
+
+[[locales]]
+locale_id = "ku-TR"
+html_lang = "ku-TR"
+url_prefix = "ku"
+display_name = "Kurdî"
+flag = "🌐"
+
+[[locales]]
+locale_id = "ti-ER"
+html_lang = "ti-ER"
+url_prefix = "ti"
+display_name = "ትግርኛ"
+flag = "🇪🇷"
+
+[[locales]]
+locale_id = "rw-RW"
+html_lang = "rw-RW"
+url_prefix = "rw"
+display_name = "Kinyarwanda"
+flag = "🇷🇼"
+
+[[locales]]
+locale_id = "mg-MG"
+html_lang = "mg-MG"
+url_prefix = "mg"
+display_name = "Malagasy"
+flag = "🇲🇬"
+
+[[locales]]
+locale_id = "sn-ZW"
+html_lang = "sn-ZW"
+url_prefix = "sn"
+display_name = "chiShona"
+flag = "🇿🇼"
+
+[[locales]]
+locale_id = "xh-ZA"
+html_lang = "xh-ZA"
+url_prefix = "xh"
+display_name = "isiXhosa"
+flag = "🇿🇦"

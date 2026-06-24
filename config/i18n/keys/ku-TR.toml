@@ -1,0 +1,55 @@
+locale_id = "ku-TR"
+
+[nav]
+help = "Alîkarî"
+docs = "Belge"
+terms = "Merc"
+privacy = "Nepênî"
+repository = "Repository"
+rust_crate = "Rust Crate"
+
+[language]
+selector_label = "Ziman"
+
+[hero]
+eyebrow = "hashavatar.app"
+title = "Di Çend Çirkeyan De Public Avatar Çêke"
+description = "Opaque user id, stable username an one-way hash bike deterministic avatar URL. Style, background û size hilbijêre, piştre WebP URL copy bike, encamê download bike an signed object-storage link çêke."
+privacy_tip = "Şîreta nepênîtiyê: email-shaped identifiers ji bo hêsanî têne qebûlkirin, lê stable internal id an one-way hash baştir e heke dixwazî personal data di URL logs de kêmtir xuya bibe."
+
+[form]
+identity = "Nasname"
+namespace_tenant = "Namespace Tenant"
+style_version = "Style Version"
+avatar_type = "Cureya Avatar"
+background = "Background"
+accessory = "Accessory"
+accent_color = "Accent Color"
+expression = "Expression"
+shape = "Shape"
+size = "Size"
+copy_url = "Copy URL"
+copy_signed_link = "Copy Signed Link"
+download = "Download"
+open_raw = "Raw Veke"
+copied = "Hat kopîkirin"
+copy_failed = "Copy bi ser neket"
+direct_url = "Direct URL"
+signed_storage_link = "Signed Storage Link"
+machine_readable_api = "Machine-Readable API"
+signed_unavailable = "Ji bo signed links li serverê S3 configuration enable bike."
+signed_unavailable_runtime = "Heta S3 li serverê configured nebe, signed storage links tune ne."
+
+[preview]
+api = "API"
+storage = "Storage"
+storage_text = "optional S3 persistence bi presigned links"
+cache = "Cache"
+cache_text = "long cache headers guncan ji bo Cloudflare"
+tip = "Şîret"
+tip_text = "Her URL deterministic e, ji ber vê dikarî rasterast di app-a xwe de embed bikî."
+presets = "Mînak Presets"
+preset_suffix = "mînak"
+
+[footer]
+copy = "hashavatar.app deterministic avatar API û demo service e, bi open-source hashavatar Rust crate hatiye çêkirin."

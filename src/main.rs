@@ -150,6 +150,34 @@ const HA_NG_KEYS_TOML: &str = include_str!("../config/i18n/keys/ha-NG.toml");
 const YO_NG_KEYS_TOML: &str = include_str!("../config/i18n/keys/yo-NG.toml");
 const IG_NG_KEYS_TOML: &str = include_str!("../config/i18n/keys/ig-NG.toml");
 const AM_ET_KEYS_TOML: &str = include_str!("../config/i18n/keys/am-ET.toml");
+const OM_ET_KEYS_TOML: &str = include_str!("../config/i18n/keys/om-ET.toml");
+const SO_SO_KEYS_TOML: &str = include_str!("../config/i18n/keys/so-SO.toml");
+const ZU_ZA_KEYS_TOML: &str = include_str!("../config/i18n/keys/zu-ZA.toml");
+const AF_ZA_KEYS_TOML: &str = include_str!("../config/i18n/keys/af-ZA.toml");
+const CA_ES_KEYS_TOML: &str = include_str!("../config/i18n/keys/ca-ES.toml");
+const EU_ES_KEYS_TOML: &str = include_str!("../config/i18n/keys/eu-ES.toml");
+const GL_ES_KEYS_TOML: &str = include_str!("../config/i18n/keys/gl-ES.toml");
+const CY_GB_KEYS_TOML: &str = include_str!("../config/i18n/keys/cy-GB.toml");
+const SQ_AL_KEYS_TOML: &str = include_str!("../config/i18n/keys/sq-AL.toml");
+const BS_BA_KEYS_TOML: &str = include_str!("../config/i18n/keys/bs-BA.toml");
+const MK_MK_KEYS_TOML: &str = include_str!("../config/i18n/keys/mk-MK.toml");
+const MT_MT_KEYS_TOML: &str = include_str!("../config/i18n/keys/mt-MT.toml");
+const HY_AM_KEYS_TOML: &str = include_str!("../config/i18n/keys/hy-AM.toml");
+const KA_GE_KEYS_TOML: &str = include_str!("../config/i18n/keys/ka-GE.toml");
+const AZ_AZ_KEYS_TOML: &str = include_str!("../config/i18n/keys/az-AZ.toml");
+const KK_KZ_KEYS_TOML: &str = include_str!("../config/i18n/keys/kk-KZ.toml");
+const UZ_UZ_KEYS_TOML: &str = include_str!("../config/i18n/keys/uz-UZ.toml");
+const KY_KG_KEYS_TOML: &str = include_str!("../config/i18n/keys/ky-KG.toml");
+const TG_TJ_KEYS_TOML: &str = include_str!("../config/i18n/keys/tg-TJ.toml");
+const TK_TM_KEYS_TOML: &str = include_str!("../config/i18n/keys/tk-TM.toml");
+const PS_AF_KEYS_TOML: &str = include_str!("../config/i18n/keys/ps-AF.toml");
+const CKB_IQ_KEYS_TOML: &str = include_str!("../config/i18n/keys/ckb-IQ.toml");
+const KU_TR_KEYS_TOML: &str = include_str!("../config/i18n/keys/ku-TR.toml");
+const TI_ER_KEYS_TOML: &str = include_str!("../config/i18n/keys/ti-ER.toml");
+const RW_RW_KEYS_TOML: &str = include_str!("../config/i18n/keys/rw-RW.toml");
+const MG_MG_KEYS_TOML: &str = include_str!("../config/i18n/keys/mg-MG.toml");
+const SN_ZW_KEYS_TOML: &str = include_str!("../config/i18n/keys/sn-ZW.toml");
+const XH_ZA_KEYS_TOML: &str = include_str!("../config/i18n/keys/xh-ZA.toml");
 
 static RENDER_SLOTS: LazyLock<Arc<Semaphore>> =
     LazyLock::new(|| Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS)));
@@ -333,6 +361,62 @@ static IG_NG_KEYS: LazyLock<toml::Value> =
     LazyLock::new(|| parse_locale_keys("ig-NG", IG_NG_KEYS_TOML));
 static AM_ET_KEYS: LazyLock<toml::Value> =
     LazyLock::new(|| parse_locale_keys("am-ET", AM_ET_KEYS_TOML));
+static OM_ET_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("om-ET", OM_ET_KEYS_TOML));
+static SO_SO_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("so-SO", SO_SO_KEYS_TOML));
+static ZU_ZA_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("zu-ZA", ZU_ZA_KEYS_TOML));
+static AF_ZA_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("af-ZA", AF_ZA_KEYS_TOML));
+static CA_ES_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ca-ES", CA_ES_KEYS_TOML));
+static EU_ES_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("eu-ES", EU_ES_KEYS_TOML));
+static GL_ES_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("gl-ES", GL_ES_KEYS_TOML));
+static CY_GB_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("cy-GB", CY_GB_KEYS_TOML));
+static SQ_AL_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("sq-AL", SQ_AL_KEYS_TOML));
+static BS_BA_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("bs-BA", BS_BA_KEYS_TOML));
+static MK_MK_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("mk-MK", MK_MK_KEYS_TOML));
+static MT_MT_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("mt-MT", MT_MT_KEYS_TOML));
+static HY_AM_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("hy-AM", HY_AM_KEYS_TOML));
+static KA_GE_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ka-GE", KA_GE_KEYS_TOML));
+static AZ_AZ_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("az-AZ", AZ_AZ_KEYS_TOML));
+static KK_KZ_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("kk-KZ", KK_KZ_KEYS_TOML));
+static UZ_UZ_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("uz-UZ", UZ_UZ_KEYS_TOML));
+static KY_KG_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ky-KG", KY_KG_KEYS_TOML));
+static TG_TJ_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("tg-TJ", TG_TJ_KEYS_TOML));
+static TK_TM_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("tk-TM", TK_TM_KEYS_TOML));
+static PS_AF_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ps-AF", PS_AF_KEYS_TOML));
+static CKB_IQ_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ckb-IQ", CKB_IQ_KEYS_TOML));
+static KU_TR_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ku-TR", KU_TR_KEYS_TOML));
+static TI_ER_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ti-ER", TI_ER_KEYS_TOML));
+static RW_RW_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("rw-RW", RW_RW_KEYS_TOML));
+static MG_MG_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("mg-MG", MG_MG_KEYS_TOML));
+static SN_ZW_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("sn-ZW", SN_ZW_KEYS_TOML));
+static XH_ZA_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("xh-ZA", XH_ZA_KEYS_TOML));
 
 fn validate_locale_config(config: &LocaleConfig) -> Result<(), String> {
     if config.default_locale != DEFAULT_LOCALE_ID {
@@ -489,6 +573,34 @@ fn locale_keys(locale_id: &str) -> &'static toml::Value {
         "yo-NG" => &YO_NG_KEYS,
         "ig-NG" => &IG_NG_KEYS,
         "am-ET" => &AM_ET_KEYS,
+        "om-ET" => &OM_ET_KEYS,
+        "so-SO" => &SO_SO_KEYS,
+        "zu-ZA" => &ZU_ZA_KEYS,
+        "af-ZA" => &AF_ZA_KEYS,
+        "ca-ES" => &CA_ES_KEYS,
+        "eu-ES" => &EU_ES_KEYS,
+        "gl-ES" => &GL_ES_KEYS,
+        "cy-GB" => &CY_GB_KEYS,
+        "sq-AL" => &SQ_AL_KEYS,
+        "bs-BA" => &BS_BA_KEYS,
+        "mk-MK" => &MK_MK_KEYS,
+        "mt-MT" => &MT_MT_KEYS,
+        "hy-AM" => &HY_AM_KEYS,
+        "ka-GE" => &KA_GE_KEYS,
+        "az-AZ" => &AZ_AZ_KEYS,
+        "kk-KZ" => &KK_KZ_KEYS,
+        "uz-UZ" => &UZ_UZ_KEYS,
+        "ky-KG" => &KY_KG_KEYS,
+        "tg-TJ" => &TG_TJ_KEYS,
+        "tk-TM" => &TK_TM_KEYS,
+        "ps-AF" => &PS_AF_KEYS,
+        "ckb-IQ" => &CKB_IQ_KEYS,
+        "ku-TR" => &KU_TR_KEYS,
+        "ti-ER" => &TI_ER_KEYS,
+        "rw-RW" => &RW_RW_KEYS,
+        "mg-MG" => &MG_MG_KEYS,
+        "sn-ZW" => &SN_ZW_KEYS,
+        "xh-ZA" => &XH_ZA_KEYS,
         "nl-BE" => &NL_NL_KEYS,
         "fr-BE" | "fr-CA" => &FR_FR_KEYS,
         "en-CA" => &EN_GB_KEYS,
@@ -5241,7 +5353,27 @@ mod tests {
         assert!(is_allowed_locale_id("pl-PL"));
         assert!(is_allowed_locale_id("cs-CZ"));
         assert!(is_allowed_locale_id("sk-SK"));
-        assert!(!is_allowed_locale_id("mk-MK"));
+        assert!(is_allowed_locale_id("sq-AL"));
+        assert!(is_allowed_locale_id("bs-BA"));
+        assert!(is_allowed_locale_id("mk-MK"));
+        assert!(is_allowed_locale_id("mt-MT"));
+        assert!(is_allowed_locale_id("hy-AM"));
+        assert!(is_allowed_locale_id("ka-GE"));
+        assert!(is_allowed_locale_id("az-AZ"));
+        assert!(is_allowed_locale_id("kk-KZ"));
+        assert!(is_allowed_locale_id("uz-UZ"));
+        assert!(is_allowed_locale_id("ky-KG"));
+        assert!(is_allowed_locale_id("tg-TJ"));
+        assert!(is_allowed_locale_id("tk-TM"));
+        assert!(is_allowed_locale_id("ps-AF"));
+        assert!(is_allowed_locale_id("ckb-IQ"));
+        assert!(is_allowed_locale_id("ku-TR"));
+        assert!(is_allowed_locale_id("ti-ER"));
+        assert!(is_allowed_locale_id("rw-RW"));
+        assert!(is_allowed_locale_id("mg-MG"));
+        assert!(is_allowed_locale_id("sn-ZW"));
+        assert!(is_allowed_locale_id("xh-ZA"));
+        assert!(!is_allowed_locale_id("nn-NO"));
     }
 
     #[test]
@@ -5348,7 +5480,7 @@ mod tests {
     #[test]
     fn locale_config_loads_requested_languages() {
         assert_eq!(default_locale().locale_id, "en-EU");
-        assert_eq!(locales().len(), 84);
+        assert_eq!(locales().len(), 112);
         assert_eq!(locale_by_prefix("en-gb").unwrap().locale_id, "en-GB");
         assert_eq!(locale_by_prefix("en-us").unwrap().locale_id, "en-US");
         assert_eq!(locale_by_prefix("fr").unwrap().display_name, "Français");
@@ -5478,7 +5610,40 @@ mod tests {
         assert_eq!(locale_by_prefix("yo").unwrap().display_name, "Yorùbá");
         assert_eq!(locale_by_prefix("ig").unwrap().display_name, "Igbo");
         assert_eq!(locale_by_prefix("am").unwrap().display_name, "አማርኛ");
-        assert!(locale_by_prefix("mk").is_none());
+        assert_eq!(locale_by_prefix("om").unwrap().display_name, "Afaan Oromoo");
+        assert_eq!(locale_by_prefix("so").unwrap().display_name, "Soomaali");
+        assert_eq!(locale_by_prefix("zu").unwrap().display_name, "isiZulu");
+        assert_eq!(locale_by_prefix("af").unwrap().display_name, "Afrikaans");
+        assert_eq!(locale_by_prefix("ca").unwrap().display_name, "Català");
+        assert_eq!(locale_by_prefix("eu").unwrap().display_name, "Euskara");
+        assert_eq!(locale_by_prefix("gl").unwrap().display_name, "Galego");
+        assert_eq!(locale_by_prefix("cy").unwrap().display_name, "Cymraeg");
+        assert_eq!(locale_by_prefix("sq").unwrap().display_name, "Shqip");
+        assert_eq!(locale_by_prefix("bs").unwrap().display_name, "Bosanski");
+        assert_eq!(locale_by_prefix("mk").unwrap().display_name, "Македонски");
+        assert_eq!(locale_by_prefix("mt").unwrap().display_name, "Malti");
+        assert_eq!(locale_by_prefix("hy").unwrap().display_name, "Հայերեն");
+        assert_eq!(locale_by_prefix("ka").unwrap().display_name, "ქართული");
+        assert_eq!(locale_by_prefix("az").unwrap().display_name, "Azərbaycanca");
+        assert_eq!(locale_by_prefix("kk").unwrap().display_name, "Қазақша");
+        assert_eq!(locale_by_prefix("uz").unwrap().display_name, "Oʻzbekcha");
+        assert_eq!(locale_by_prefix("ky").unwrap().display_name, "Кыргызча");
+        assert_eq!(locale_by_prefix("tg").unwrap().display_name, "Тоҷикӣ");
+        assert_eq!(locale_by_prefix("tk").unwrap().display_name, "Türkmençe");
+        assert_eq!(locale_by_prefix("ps").unwrap().display_name, "پښتو");
+        assert_eq!(locale_by_prefix("ps").unwrap().dir.as_deref(), Some("rtl"));
+        assert_eq!(
+            locale_by_prefix("ckb").unwrap().display_name,
+            "کوردیی ناوەندی"
+        );
+        assert_eq!(locale_by_prefix("ckb").unwrap().dir.as_deref(), Some("rtl"));
+        assert_eq!(locale_by_prefix("ku").unwrap().display_name, "Kurdî");
+        assert_eq!(locale_by_prefix("ti").unwrap().display_name, "ትግርኛ");
+        assert_eq!(locale_by_prefix("rw").unwrap().display_name, "Kinyarwanda");
+        assert_eq!(locale_by_prefix("mg").unwrap().display_name, "Malagasy");
+        assert_eq!(locale_by_prefix("sn").unwrap().display_name, "chiShona");
+        assert_eq!(locale_by_prefix("xh").unwrap().display_name, "isiXhosa");
+        assert!(locale_by_prefix("nn").is_none());
     }
 
     #[test]
@@ -5708,6 +5873,34 @@ mod tests {
         assert!(html.contains(r#"<a href="/yo/">🇳🇬 Yorùbá</a>"#));
         assert!(html.contains(r#"<a href="/ig/">🇳🇬 Igbo</a>"#));
         assert!(html.contains(r#"<a href="/am/">🇪🇹 አማርኛ</a>"#));
+        assert!(html.contains(r#"<a href="/om/">🇪🇹 Afaan Oromoo</a>"#));
+        assert!(html.contains(r#"<a href="/so/">🇸🇴 Soomaali</a>"#));
+        assert!(html.contains(r#"<a href="/zu/">🇿🇦 isiZulu</a>"#));
+        assert!(html.contains(r#"<a href="/af/">🇿🇦 Afrikaans</a>"#));
+        assert!(html.contains(r#"<a href="/ca/">🇪🇸 Català</a>"#));
+        assert!(html.contains(r#"<a href="/eu/">🇪🇸 Euskara</a>"#));
+        assert!(html.contains(r#"<a href="/gl/">🇪🇸 Galego</a>"#));
+        assert!(html.contains(r#"<a href="/cy/">🏴 Cymraeg</a>"#));
+        assert!(html.contains(r#"<a href="/sq/">🇦🇱 Shqip</a>"#));
+        assert!(html.contains(r#"<a href="/bs/">🇧🇦 Bosanski</a>"#));
+        assert!(html.contains(r#"<a href="/mk/">🇲🇰 Македонски</a>"#));
+        assert!(html.contains(r#"<a href="/mt/">🇲🇹 Malti</a>"#));
+        assert!(html.contains(r#"<a href="/hy/">🇦🇲 Հայերեն</a>"#));
+        assert!(html.contains(r#"<a href="/ka/">🇬🇪 ქართული</a>"#));
+        assert!(html.contains(r#"<a href="/az/">🇦🇿 Azərbaycanca</a>"#));
+        assert!(html.contains(r#"<a href="/kk/">🇰🇿 Қазақша</a>"#));
+        assert!(html.contains(r#"<a href="/uz/">🇺🇿 Oʻzbekcha</a>"#));
+        assert!(html.contains(r#"<a href="/ky/">🇰🇬 Кыргызча</a>"#));
+        assert!(html.contains(r#"<a href="/tg/">🇹🇯 Тоҷикӣ</a>"#));
+        assert!(html.contains(r#"<a href="/tk/">🇹🇲 Türkmençe</a>"#));
+        assert!(html.contains(r#"<a href="/ps/">🇦🇫 پښتو</a>"#));
+        assert!(html.contains(r#"<a href="/ckb/">🇮🇶 کوردیی ناوەندی</a>"#));
+        assert!(html.contains(r#"<a href="/ku/">🌐 Kurdî</a>"#));
+        assert!(html.contains(r#"<a href="/ti/">🇪🇷 ትግርኛ</a>"#));
+        assert!(html.contains(r#"<a href="/rw/">🇷🇼 Kinyarwanda</a>"#));
+        assert!(html.contains(r#"<a href="/mg/">🇲🇬 Malagasy</a>"#));
+        assert!(html.contains(r#"<a href="/sn/">🇿🇼 chiShona</a>"#));
+        assert!(html.contains(r#"<a href="/xh/">🇿🇦 isiXhosa</a>"#));
         assert!(html.contains("/v1/avatar?id=cat@hashavatar.app"));
         assert!(!html.contains("/de/v1/avatar"));
     }

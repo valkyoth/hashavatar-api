@@ -1,0 +1,55 @@
+locale_id = "ps-AF"
+
+[nav]
+help = "مرسته"
+docs = "اسناد"
+terms = "شرطونه"
+privacy = "محرمیت"
+repository = "Repository"
+rust_crate = "Rust Crate"
+
+[language]
+selector_label = "ژبه"
+
+[hero]
+eyebrow = "hashavatar.app"
+title = "په څو ثانیو کې Public Avatar جوړ کړه"
+description = "Opaque user id، stable username یا one-way hash په deterministic avatar URL بدل کړه. Style، background او size وټاکه، بیا WebP URL copy کړه، نتیجه download کړه یا signed object-storage link جوړ کړه."
+privacy_tip = "د محرمیت سپارښتنه: email-shaped identifiers د اسانتیا لپاره منل کېږي، خو که غواړې په URL logs کې personal data لږ ښکاره شي، stable internal id یا one-way hash ښه دی."
+
+[form]
+identity = "پېژندنه"
+namespace_tenant = "Namespace Tenant"
+style_version = "Style Version"
+avatar_type = "د Avatar ډول"
+background = "Background"
+accessory = "Accessory"
+accent_color = "Accent Color"
+expression = "Expression"
+shape = "Shape"
+size = "Size"
+copy_url = "Copy URL"
+copy_signed_link = "Copy Signed Link"
+download = "Download"
+open_raw = "Raw پرانیزه"
+copied = "کاپي شو"
+copy_failed = "Copy ناکام شو"
+direct_url = "Direct URL"
+signed_storage_link = "Signed Storage Link"
+machine_readable_api = "Machine-Readable API"
+signed_unavailable = "د signed links لپاره په server کې S3 configuration enable کړه."
+signed_unavailable_runtime = "تر څو S3 په server کې configured نه وي، signed storage links نه شته."
+
+[preview]
+api = "API"
+storage = "Storage"
+storage_text = "optional S3 persistence د presigned links له لارې"
+cache = "Cache"
+cache_text = "د Cloudflare لپاره مناسب long cache headers"
+tip = "سپارښتنه"
+tip_text = "هر URL deterministic دی، نو په خپل app کې یې مستقیم embed کولی شې."
+presets = "بېلګه Presets"
+preset_suffix = "بېلګه"
+
+[footer]
+copy = "hashavatar.app یو deterministic avatar API او demo service دی، چې د open-source hashavatar Rust crate سره جوړ شوی."

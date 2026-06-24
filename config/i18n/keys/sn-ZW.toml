@@ -1,0 +1,55 @@
+locale_id = "sn-ZW"
+
+[nav]
+help = "Rubatsiro"
+docs = "Magwaro"
+terms = "Mitemo"
+privacy = "Kuvanzika"
+repository = "Repository"
+rust_crate = "Rust Crate"
+
+[language]
+selector_label = "Mutauro"
+
+[hero]
+eyebrow = "hashavatar.app"
+title = "Gadzira Public Avatar Mumasekondi Mashoma"
+description = "Shandura opaque user id, stable username kana one-way hash ive deterministic avatar URL. Sarudza style, background ne size, wozoti copy WebP URL, download mhedzisiro kana kugadzira signed object-storage link."
+privacy_tip = "Zano rekuvanzika: email-shaped identifiers dzinogamuchirwa kuti zvive nyore, asi stable internal id kana one-way hash zviri nani kana uchida kuti personal data isanyanye kuoneka mu URL logs."
+
+[form]
+identity = "Chiziviso"
+namespace_tenant = "Namespace Tenant"
+style_version = "Style Version"
+avatar_type = "Rudzi Rwe Avatar"
+background = "Background"
+accessory = "Accessory"
+accent_color = "Accent Color"
+expression = "Expression"
+shape = "Shape"
+size = "Size"
+copy_url = "Copy URL"
+copy_signed_link = "Copy Signed Link"
+download = "Download"
+open_raw = "Vhura Raw"
+copied = "Yakopwa"
+copy_failed = "Copy yakundikana"
+direct_url = "Direct URL"
+signed_storage_link = "Signed Storage Link"
+machine_readable_api = "Machine-Readable API"
+signed_unavailable = "Enable S3 configuration pa server kuti ushandise signed links."
+signed_unavailable_runtime = "Signed storage links hadziwanikwe kusvikira S3 configured pa server."
+
+[preview]
+api = "API"
+storage = "Storage"
+storage_text = "optional S3 persistence ne presigned links"
+cache = "Cache"
+cache_text = "long cache headers dzakakodzera Cloudflare"
+tip = "Zano"
+tip_text = "URL imwe neimwe deterministic, saka unogona kui embed zvakananga mu app yako."
+presets = "Mienzaniso Presets"
+preset_suffix = "muenzaniso"
+
+[footer]
+copy = "hashavatar.app i deterministic avatar API ne demo service yakavakwa ne open-source hashavatar Rust crate."

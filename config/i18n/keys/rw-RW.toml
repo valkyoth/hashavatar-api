@@ -1,0 +1,55 @@
+locale_id = "rw-RW"
+
+[nav]
+help = "Ubufasha"
+docs = "Inyandiko"
+terms = "Amategeko"
+privacy = "Ibanga"
+repository = "Repository"
+rust_crate = "Rust Crate"
+
+[language]
+selector_label = "Ururimi"
+
+[hero]
+eyebrow = "hashavatar.app"
+title = "Kora Public Avatar Mu Masegonda Make"
+description = "Hindura opaque user id, stable username cyangwa one-way hash ibe deterministic avatar URL. Hitamo style, background na size, hanyuma copy WebP URL, download ibisubizo cyangwa ukore signed object-storage link."
+privacy_tip = "Inama y'ibanga: email-shaped identifiers zemerwa kubera korohereza, ariko stable internal id cyangwa one-way hash ni byiza niba ushaka ko personal data itagaragara cyane muri URL logs."
+
+[form]
+identity = "Indangamuntu"
+namespace_tenant = "Namespace Tenant"
+style_version = "Style Version"
+avatar_type = "Ubwoko Bwa Avatar"
+background = "Background"
+accessory = "Accessory"
+accent_color = "Accent Color"
+expression = "Expression"
+shape = "Shape"
+size = "Size"
+copy_url = "Copy URL"
+copy_signed_link = "Copy Signed Link"
+download = "Download"
+open_raw = "Fungura Raw"
+copied = "Byakopiwe"
+copy_failed = "Copy yanze"
+direct_url = "Direct URL"
+signed_storage_link = "Signed Storage Link"
+machine_readable_api = "Machine-Readable API"
+signed_unavailable = "Enable S3 configuration kuri server kugira ngo ukoreshe signed links."
+signed_unavailable_runtime = "Signed storage links ntiziboneka kugeza S3 configured kuri server."
+
+[preview]
+api = "API"
+storage = "Storage"
+storage_text = "optional S3 persistence ukoresheje presigned links"
+cache = "Cache"
+cache_text = "long cache headers zibereye Cloudflare"
+tip = "Inama"
+tip_text = "Buri URL ni deterministic, bityo wayishyira muri app yawe ukoresheje embed."
+presets = "Ingero Presets"
+preset_suffix = "urugero"
+
+[footer]
+copy = "hashavatar.app ni deterministic avatar API na demo service yubatswe na open-source hashavatar Rust crate."

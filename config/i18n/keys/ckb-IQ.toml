@@ -1,0 +1,55 @@
+locale_id = "ckb-IQ"
+
+[nav]
+help = "یارمەتی"
+docs = "بەڵگەنامە"
+terms = "مەرجەکان"
+privacy = "تایبەتمەندی"
+repository = "Repository"
+rust_crate = "Rust Crate"
+
+[language]
+selector_label = "زمان"
+
+[hero]
+eyebrow = "hashavatar.app"
+title = "لە چەند چرکەیەکدا Public Avatar دروست بکە"
+description = "Opaque user id، stable username یان one-way hash بکە بە deterministic avatar URL. Style، background و size هەڵبژێرە، پاشان WebP URL copy بکە، ئەنجامەکە download بکە یان signed object-storage link دروست بکە."
+privacy_tip = "ئامۆژگاری تایبەتمەندی: email-shaped identifiers بۆ ئاسانی وەردەگیرێن، بەڵام ئەگەر دەتەوێت personal data لە URL logs کەمتر دەرکەوێت، stable internal id یان one-way hash باشترە."
+
+[form]
+identity = "ناسنامە"
+namespace_tenant = "Namespace Tenant"
+style_version = "Style Version"
+avatar_type = "جۆری Avatar"
+background = "Background"
+accessory = "Accessory"
+accent_color = "Accent Color"
+expression = "Expression"
+shape = "Shape"
+size = "Size"
+copy_url = "Copy URL"
+copy_signed_link = "Copy Signed Link"
+download = "Download"
+open_raw = "Raw بکەرەوە"
+copied = "کۆپی کرا"
+copy_failed = "Copy سەرکەوتوو نەبوو"
+direct_url = "Direct URL"
+signed_storage_link = "Signed Storage Link"
+machine_readable_api = "Machine-Readable API"
+signed_unavailable = "بۆ بەکارهێنانی signed links لە server دا S3 configuration enable بکە."
+signed_unavailable_runtime = "تا S3 لە server دا configured نەبێت، signed storage links بەردەست نییە."
+
+[preview]
+api = "API"
+storage = "Storage"
+storage_text = "optional S3 persistence بە presigned links"
+cache = "Cache"
+cache_text = "long cache headers گونجاو بۆ Cloudflare"
+tip = "ئامۆژگاری"
+tip_text = "هەر URL ـێک deterministic ـە، بۆیە دەتوانیت ڕاستەوخۆ لە app ـەکەت embed بکەیت."
+presets = "نموونە Presets"
+preset_suffix = "نموونە"
+
+[footer]
+copy = "hashavatar.app بریتییە لە deterministic avatar API و demo service کە بە open-source hashavatar Rust crate دروستکراوە."

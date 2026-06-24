@@ -1,0 +1,55 @@
+locale_id = "xh-ZA"
+
+[nav]
+help = "Uncedo"
+docs = "Amaxwebhu"
+terms = "Imiqathango"
+privacy = "Ubumfihlo"
+repository = "Repository"
+rust_crate = "Rust Crate"
+
+[language]
+selector_label = "Ulwimi"
+
+[hero]
+eyebrow = "hashavatar.app"
+title = "Yenza Public Avatar Kwimizuzwana Embalwa"
+description = "Guqula opaque user id, stable username okanye one-way hash ibe deterministic avatar URL. Khetha style, background kunye ne size, emva koko copy i-WebP URL, download isiphumo okanye wenze signed object-storage link."
+privacy_tip = "Icebiso lobumfihlo: email-shaped identifiers zamkelwa lula, kodwa stable internal id okanye one-way hash ingcono ukuba ufuna personal data encinci ibonakale kwi URL logs."
+
+[form]
+identity = "Isazisi"
+namespace_tenant = "Namespace Tenant"
+style_version = "Style Version"
+avatar_type = "Uhlobo Lwe Avatar"
+background = "Background"
+accessory = "Accessory"
+accent_color = "Accent Color"
+expression = "Expression"
+shape = "Shape"
+size = "Size"
+copy_url = "Copy URL"
+copy_signed_link = "Copy Signed Link"
+download = "Download"
+open_raw = "Vula Raw"
+copied = "Ikopiwe"
+copy_failed = "Copy ayiphumelelanga"
+direct_url = "Direct URL"
+signed_storage_link = "Signed Storage Link"
+machine_readable_api = "Machine-Readable API"
+signed_unavailable = "Enable S3 configuration kwi server ukuze usebenzise signed links."
+signed_unavailable_runtime = "Signed storage links azifumaneki de i-S3 ibe configured kwi server."
+
+[preview]
+api = "API"
+storage = "Storage"
+storage_text = "optional S3 persistence nge presigned links"
+cache = "Cache"
+cache_text = "long cache headers ezifanelekileyo kwi Cloudflare"
+tip = "Icebiso"
+tip_text = "Yonke URL deterministic, ngoko ungayifaka ngqo kwi app yakho nge embed."
+presets = "Imizekelo Presets"
+preset_suffix = "umzekelo"
+
+[footer]
+copy = "hashavatar.app yi deterministic avatar API kunye ne demo service eyakhiwe nge open-source hashavatar Rust crate."

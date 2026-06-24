@@ -51,7 +51,11 @@ Implemented now:
   Emirati Arabic, Egyptian Arabic, Saudi Arabic, Indonesian, Urdu, Marathi,
   Javanese, Brazilian Portuguese, Mexican Spanish, Malay, Filipino, Persian,
   Hebrew, Swahili, Punjabi, Telugu, Gujarati, Kannada, Malayalam, Nepali,
-  Sinhala, Burmese, Khmer, Lao, Mongolian, Hausa, Yoruba, Igbo, and Amharic.
+  Sinhala, Burmese, Khmer, Lao, Mongolian, Hausa, Yoruba, Igbo, Amharic,
+  Oromo, Somali, Zulu, Afrikaans, Catalan, Basque, Galician, Welsh, Albanian,
+  Bosnian, Macedonian, Maltese, Armenian, Georgian, Azerbaijani, Kazakh,
+  Uzbek, Kyrgyz, Tajik, Turkmen, Pashto, Kurdish Sorani, Kurdish Kurmanji,
+  Tigrinya, Kinyarwanda, Malagasy, Shona, and Xhosa.
 - Local gates for formatting, clippy, tests, security invariants, dependency
   policy, RustSec advisories, local smoke testing, SBOM generation, and
   reproducible release builds.
@@ -346,6 +350,34 @@ other website locales use stable prefixes:
 - `/yo/` for Yoruba
 - `/ig/` for Igbo
 - `/am/` for Amharic
+- `/om/` for Oromo
+- `/so/` for Somali
+- `/zu/` for Zulu
+- `/af/` for Afrikaans
+- `/ca/` for Catalan
+- `/eu/` for Basque
+- `/gl/` for Galician
+- `/cy/` for Welsh
+- `/sq/` for Albanian
+- `/bs/` for Bosnian
+- `/mk/` for Macedonian
+- `/mt/` for Maltese
+- `/hy/` for Armenian
+- `/ka/` for Georgian
+- `/az/` for Azerbaijani
+- `/kk/` for Kazakh
+- `/uz/` for Uzbek
+- `/ky/` for Kyrgyz
+- `/tg/` for Tajik
+- `/tk/` for Turkmen
+- `/ps/` for Pashto
+- `/ckb/` for Kurdish Sorani
+- `/ku/` for Kurdish Kurmanji
+- `/ti/` for Tigrinya
+- `/rw/` for Kinyarwanda
+- `/mg/` for Malagasy
+- `/sn/` for Shona
+- `/xh/` for Xhosa
 
 Locale configuration lives in [config/locales.toml](config/locales.toml), and
 translated website keys live in [config/i18n/keys](config/i18n/keys). The

@@ -1,0 +1,55 @@
+locale_id = "mg-MG"
+
+[nav]
+help = "Fanampiana"
+docs = "Antontan-taratasy"
+terms = "Fepetra"
+privacy = "Tsiambaratelo"
+repository = "Repository"
+rust_crate = "Rust Crate"
+
+[language]
+selector_label = "Fiteny"
+
+[hero]
+eyebrow = "hashavatar.app"
+title = "Mamorona Public Avatar Ao Anaty Segondra"
+description = "Avadika ho deterministic avatar URL ny opaque user id, stable username na one-way hash. Safidio ny style, background ary size, avy eo copy ny WebP URL, download ny vokatra na mamorona signed object-storage link."
+privacy_tip = "Torohevitra tsiambaratelo: email-shaped identifiers ekena ho mora ampiasaina, fa stable internal id na one-way hash no tsara kokoa raha tianao ho vitsy kokoa ny personal data hita ao amin'ny URL logs."
+
+[form]
+identity = "Identité"
+namespace_tenant = "Namespace Tenant"
+style_version = "Style Version"
+avatar_type = "Karazana Avatar"
+background = "Background"
+accessory = "Accessory"
+accent_color = "Accent Color"
+expression = "Expression"
+shape = "Shape"
+size = "Size"
+copy_url = "Copy URL"
+copy_signed_link = "Copy Signed Link"
+download = "Download"
+open_raw = "Sokafy Raw"
+copied = "Voakopia"
+copy_failed = "Copy tsy nahomby"
+direct_url = "Direct URL"
+signed_storage_link = "Signed Storage Link"
+machine_readable_api = "Machine-Readable API"
+signed_unavailable = "Enable S3 configuration ao amin'ny server raha hampiasa signed links."
+signed_unavailable_runtime = "Tsy misy signed storage links raha tsy configured ao amin'ny server ny S3."
+
+[preview]
+api = "API"
+storage = "Storage"
+storage_text = "optional S3 persistence amin'ny presigned links"
+cache = "Cache"
+cache_text = "long cache headers mety amin'ny Cloudflare"
+tip = "Torohevitra"
+tip_text = "Deterministic ny URL tsirairay, ka afaka embed mivantana ao amin'ny app-nao."
+presets = "Ohatra Presets"
+preset_suffix = "ohatra"
+
+[footer]
+copy = "hashavatar.app dia deterministic avatar API sy demo service naorina amin'ny open-source hashavatar Rust crate."

@@ -1,0 +1,55 @@
+locale_id = "ti-ER"
+
+[nav]
+help = "ሓገዝ"
+docs = "ሰነዳት"
+terms = "ውዕላት"
+privacy = "ብሕታዊነት"
+repository = "Repository"
+rust_crate = "Rust Crate"
+
+[language]
+selector_label = "ቋንቋ"
+
+[hero]
+eyebrow = "hashavatar.app"
+title = "ኣብ ጥቂት ካልኢት Public Avatar ፍጠር"
+description = "Opaque user id, stable username ወይ one-way hash ናብ deterministic avatar URL ቀይር። Style, background እና size ምረጽ፣ ድሕሪኡ WebP URL copy ግበር፣ ውጽኢቱ download ግበር ወይ signed object-storage link ፍጠር።"
+privacy_tip = "ምኽሪ ብሕታዊነት፦ email-shaped identifiers ንቀሊልነት ይቕበሉ፣ ግን ኣብ URL logs personal data ክቕንስ እንተደሊኻ stable internal id ወይ one-way hash ይሓይሽ።"
+
+[form]
+identity = "መለለዪ"
+namespace_tenant = "Namespace Tenant"
+style_version = "Style Version"
+avatar_type = "ዓይነት Avatar"
+background = "Background"
+accessory = "Accessory"
+accent_color = "Accent Color"
+expression = "Expression"
+shape = "Shape"
+size = "Size"
+copy_url = "Copy URL"
+copy_signed_link = "Copy Signed Link"
+download = "Download"
+open_raw = "Raw ክፈት"
+copied = "ተቐዲሑ"
+copy_failed = "Copy ኣይተዓወተን"
+direct_url = "Direct URL"
+signed_storage_link = "Signed Storage Link"
+machine_readable_api = "Machine-Readable API"
+signed_unavailable = "signed links ንምጥቃም ኣብ server S3 configuration enable ግበር።"
+signed_unavailable_runtime = "S3 ኣብ server configured ክሳብ ዘይኮነ signed storage links ኣይርከብን።"
+
+[preview]
+api = "API"
+storage = "Storage"
+storage_text = "optional S3 persistence ብ presigned links"
+cache = "Cache"
+cache_text = "long cache headers ን Cloudflare ዝምችእ"
+tip = "ምኽሪ"
+tip_text = "ነፍሲ ወከፍ URL deterministic እዩ፣ ስለዚ ብቐጥታ ኣብ app ክት embed ትኽእል።"
+presets = "ኣብነት Presets"
+preset_suffix = "ኣብነት"
+
+[footer]
+copy = "hashavatar.app deterministic avatar API እና demo service እዩ፣ ብ open-source hashavatar Rust crate ዝተሃንጸ።"

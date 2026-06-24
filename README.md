@@ -48,7 +48,10 @@ Implemented now:
   Polish, Greek, Hungarian, Estonian, Elfdalian, Bulgarian, Czech, Croatian,
   Belarusian, Irish, Luxembourgish, Romanian, Serbian, Neapolitan, Slovak,
   Slovene, West Frisian, Northern Sami, Sicilian, Modern Standard Arabic,
-  Emirati Arabic, Egyptian Arabic, and Saudi Arabic.
+  Emirati Arabic, Egyptian Arabic, Saudi Arabic, Indonesian, Urdu, Marathi,
+  Javanese, Brazilian Portuguese, Mexican Spanish, Malay, Filipino, Persian,
+  Hebrew, Swahili, Punjabi, Telugu, Gujarati, Kannada, Malayalam, Nepali,
+  Sinhala, Burmese, Khmer, Lao, Mongolian, Hausa, Yoruba, Igbo, and Amharic.
 - Local gates for formatting, clippy, tests, security invariants, dependency
   policy, RustSec advisories, local smoke testing, SBOM generation, and
   reproducible release builds.
@@ -317,6 +320,32 @@ other website locales use stable prefixes:
 - `/ar-ae/` for Emirati Arabic
 - `/ar-eg/` for Egyptian Arabic
 - `/ar-sa/` for Saudi Arabic
+- `/id/` for Indonesian
+- `/ur/` for Urdu
+- `/mr/` for Marathi
+- `/jv/` for Javanese
+- `/pt-br/` for Brazilian Portuguese
+- `/es-mx/` for Mexican Spanish
+- `/ms/` for Malay
+- `/fil/` for Filipino
+- `/fa/` for Persian
+- `/he/` for Hebrew
+- `/sw/` for Swahili
+- `/pa/` for Punjabi
+- `/te/` for Telugu
+- `/gu/` for Gujarati
+- `/kn/` for Kannada
+- `/ml/` for Malayalam
+- `/ne/` for Nepali
+- `/si/` for Sinhala
+- `/my/` for Burmese
+- `/km/` for Khmer
+- `/lo/` for Lao
+- `/mn/` for Mongolian
+- `/ha/` for Hausa
+- `/yo/` for Yoruba
+- `/ig/` for Igbo
+- `/am/` for Amharic
 
 Locale configuration lives in [config/locales.toml](config/locales.toml), and
 translated website keys live in [config/i18n/keys](config/i18n/keys). The

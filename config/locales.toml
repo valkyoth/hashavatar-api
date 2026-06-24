@@ -409,3 +409,188 @@ dir = "rtl"
 url_prefix = "ar-sa"
 display_name = "العربية السعودية"
 flag = "🇸🇦"
+
+[[locales]]
+locale_id = "id-ID"
+html_lang = "id-ID"
+url_prefix = "id"
+display_name = "Bahasa Indonesia"
+flag = "🇮🇩"
+
+[[locales]]
+locale_id = "ur-PK"
+html_lang = "ur-PK"
+dir = "rtl"
+url_prefix = "ur"
+display_name = "اردو"
+flag = "🇵🇰"
+
+[[locales]]
+locale_id = "mr-IN"
+html_lang = "mr-IN"
+url_prefix = "mr"
+display_name = "मराठी"
+flag = "🇮🇳"
+
+[[locales]]
+locale_id = "jv-ID"
+html_lang = "jv-ID"
+url_prefix = "jv"
+display_name = "Basa Jawa"
+flag = "🇮🇩"
+
+[[locales]]
+locale_id = "pt-BR"
+html_lang = "pt-BR"
+url_prefix = "pt-br"
+display_name = "Português (Brasil)"
+flag = "🇧🇷"
+
+[[locales]]
+locale_id = "es-MX"
+html_lang = "es-MX"
+url_prefix = "es-mx"
+display_name = "Español (México)"
+flag = "🇲🇽"
+
+[[locales]]
+locale_id = "ms-MY"
+html_lang = "ms-MY"
+url_prefix = "ms"
+display_name = "Bahasa Melayu"
+flag = "🇲🇾"
+
+[[locales]]
+locale_id = "fil-PH"
+html_lang = "fil-PH"
+url_prefix = "fil"
+display_name = "Filipino"
+flag = "🇵🇭"
+
+[[locales]]
+locale_id = "fa-IR"
+html_lang = "fa-IR"
+dir = "rtl"
+url_prefix = "fa"
+display_name = "فارسی"
+flag = "🇮🇷"
+
+[[locales]]
+locale_id = "he-IL"
+html_lang = "he-IL"
+dir = "rtl"
+url_prefix = "he"
+display_name = "עברית"
+flag = "🇮🇱"
+
+[[locales]]
+locale_id = "sw-KE"
+html_lang = "sw-KE"
+url_prefix = "sw"
+display_name = "Kiswahili"
+flag = "🇰🇪"
+
+[[locales]]
+locale_id = "pa-IN"
+html_lang = "pa-IN"
+url_prefix = "pa"
+display_name = "ਪੰਜਾਬੀ"
+flag = "🇮🇳"
+
+[[locales]]
+locale_id = "te-IN"
+html_lang = "te-IN"
+url_prefix = "te"
+display_name = "తెలుగు"
+flag = "🇮🇳"
+
+[[locales]]
+locale_id = "gu-IN"
+html_lang = "gu-IN"
+url_prefix = "gu"
+display_name = "ગુજરાતી"
+flag = "🇮🇳"
+
+[[locales]]
+locale_id = "kn-IN"
+html_lang = "kn-IN"
+url_prefix = "kn"
+display_name = "ಕನ್ನಡ"
+flag = "🇮🇳"
+
+[[locales]]
+locale_id = "ml-IN"
+html_lang = "ml-IN"
+url_prefix = "ml"
+display_name = "മലയാളം"
+flag = "🇮🇳"
+
+[[locales]]
+locale_id = "ne-NP"
+html_lang = "ne-NP"
+url_prefix = "ne"
+display_name = "नेपाली"
+flag = "🇳🇵"
+
+[[locales]]
+locale_id = "si-LK"
+html_lang = "si-LK"
+url_prefix = "si"
+display_name = "සිංහල"
+flag = "🇱🇰"
+
+[[locales]]
+locale_id = "my-MM"
+html_lang = "my-MM"
+url_prefix = "my"
+display_name = "မြန်မာ"
+flag = "🇲🇲"
+
+[[locales]]
+locale_id = "km-KH"
+html_lang = "km-KH"
+url_prefix = "km"
+display_name = "ភាសាខ្មែរ"
+flag = "🇰🇭"
+
+[[locales]]
+locale_id = "lo-LA"
+html_lang = "lo-LA"
+url_prefix = "lo"
+display_name = "ລາວ"
+flag = "🇱🇦"
+
+[[locales]]
+locale_id = "mn-MN"
+html_lang = "mn-MN"
+url_prefix = "mn"
+display_name = "Монгол"
+flag = "🇲🇳"
+
+[[locales]]
+locale_id = "ha-NG"
+html_lang = "ha-NG"
+url_prefix = "ha"
+display_name = "Hausa"
+flag = "🇳🇬"
+
+[[locales]]
+locale_id = "yo-NG"
+html_lang = "yo-NG"
+url_prefix = "yo"
+display_name = "Yorùbá"
+flag = "🇳🇬"
+
+[[locales]]
+locale_id = "ig-NG"
+html_lang = "ig-NG"
+url_prefix = "ig"
+display_name = "Igbo"
+flag = "🇳🇬"
+
+[[locales]]
+locale_id = "am-ET"
+html_lang = "am-ET"
+url_prefix = "am"
+display_name = "አማርኛ"
+flag = "🇪🇹"

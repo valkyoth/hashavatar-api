@@ -74,7 +74,7 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Service license | `EUPL-1.2` |
-| Renderer crate | local `hashavatar 1.1.0` |
+| Renderer crate | crates.io `hashavatar 1.1.0` |
 | MSRV | Rust `1.96.0` |
 | Runtime container | Wolfi |
 | HTTP framework | `axum` |

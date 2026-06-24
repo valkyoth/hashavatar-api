@@ -2,6 +2,7 @@ FROM rust:1.96 AS build
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
+COPY config ./config
 COPY src ./src
 
 RUN cargo build --release \

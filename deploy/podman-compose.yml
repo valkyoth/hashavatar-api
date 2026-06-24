@@ -11,6 +11,8 @@ services:
       PORT: "8080"
       PUBLIC_WEBSITE_HOST: "0.0.0.0"
       HASHAVATAR_TRUSTED_PROXIES: "10.89.42.0/24"
+      HASHAVATAR_OTLP: "${HASHAVATAR_OTLP:-disabled}"
+      HASHAVATAR_OTLP_ENDPOINT: "${HASHAVATAR_OTLP_ENDPOINT:-}"
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -23,7 +25,7 @@ services:
       - hashavatar
 
   fluxheim:
-    image: ghcr.io/valkyoth/fluxheim:v1.5.14-wolfi
+    image: ghcr.io/valkyoth/fluxheim:v1.6.30-wolfi
     container_name: hashavatar-fluxheim
     restart: unless-stopped
     stop_signal: SIGTERM

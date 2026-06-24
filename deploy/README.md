@@ -5,7 +5,7 @@ It runs two containers on one private network:
 
 - `hashavatar`: builds this repository with the Wolfi runtime image from
   `../Dockerfile` and listens internally on port `8080`.
-- `fluxheim`: runs `ghcr.io/valkyoth/fluxheim:v1.5.14-wolfi`, publishes ports
+- `fluxheim`: runs `ghcr.io/valkyoth/fluxheim:v1.6.30-wolfi`, publishes ports
   `80` and `443`, terminates TLS, redirects HTTP to HTTPS, redirects
   `www.hashavatar.app` to `hashavatar.app`, and proxies traffic to
   `hashavatar:8080`.
@@ -23,6 +23,22 @@ make metrics public if explicitly forwarded.
 The app container is hardened for the expected runtime shape: read-only root
 filesystem, no new privileges, all Linux capabilities dropped, and a small
 `/tmp` tmpfs for temporary runtime files.
+
+## Optional OpenTelemetry
+
+OpenTelemetry metrics are disabled by default. Enable them only when you have an
+OTLP collector or observability backend ready:
+
+```bash
+HASHAVATAR_OTLP=enabled \
+HASHAVATAR_OTLP_ENDPOINT=http://otel-collector:4318/v1/metrics \
+podman compose -f deploy/podman-compose.yml up -d --build
+```
+
+The app records aggregate request, page-view, visible-time, click, and avatar
+generation metrics. Labels are bounded to routes, sections, click categories,
+and avatar style choices; identities, tenant names, URLs, referrers, user
+agents, and IP addresses are not sent as metric attributes by the application.
 
 ## Files
 

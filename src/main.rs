@@ -15,7 +15,7 @@ use axum::extract::{ConnectInfo, Extension, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use hashavatar::{
     AVATAR_STYLE_VERSION, AvatarAccessory, AvatarBackground, AvatarColor, AvatarExpression,
@@ -26,6 +26,10 @@ use hashavatar::{
 use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use ipnet::IpNet;
 use lru::LruCache;
+use opentelemetry::metrics::{Counter, Histogram};
+use opentelemetry::{KeyValue, global};
+use opentelemetry_otlp::{Protocol, WithExportConfig};
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::{Mutex, Semaphore};
@@ -66,15 +70,308 @@ const INVALID_AVATAR_FORMAT_MESSAGE: &str = "unsupported avatar format: expected
 const INVALID_AVATAR_RENDER_MESSAGE: &str = "avatar generation failed";
 const INDEX_SCRIPT_SHA256: &str = "'sha256-7gjoUnTfcILxVkX3DugGXgaAEhWr+Pn91S0M+2HGQTs='";
 const INDEX_SCRIPT_SHA256_COMPAT: &str = "'sha256-ZswfTY7H35rbv8WC7NXBoiC7WNu86vSzCDChNWwZZDM='";
+const OTEL_SERVICE_NAME: &str = "hashavatar-api";
+const COUNTRY_UNKNOWN: &str = "unknown";
+const MAX_VISIBLE_SECONDS: u64 = 86_400;
+const DEFAULT_LOCALE_ID: &str = "en-EU";
+const LOCALES_TOML: &str = include_str!("../config/locales.toml");
+const EN_EU_KEYS_TOML: &str = include_str!("../config/i18n/keys/en-EU.toml");
+const EN_GB_KEYS_TOML: &str = include_str!("../config/i18n/keys/en-GB.toml");
+const EN_US_KEYS_TOML: &str = include_str!("../config/i18n/keys/en-US.toml");
+const FR_FR_KEYS_TOML: &str = include_str!("../config/i18n/keys/fr-FR.toml");
+const DE_DE_KEYS_TOML: &str = include_str!("../config/i18n/keys/de-DE.toml");
+const SV_SE_KEYS_TOML: &str = include_str!("../config/i18n/keys/sv-SE.toml");
+const NB_NO_KEYS_TOML: &str = include_str!("../config/i18n/keys/nb-NO.toml");
+const NL_NL_KEYS_TOML: &str = include_str!("../config/i18n/keys/nl-NL.toml");
+const FI_FI_KEYS_TOML: &str = include_str!("../config/i18n/keys/fi-FI.toml");
+const IS_IS_KEYS_TOML: &str = include_str!("../config/i18n/keys/is-IS.toml");
+const ES_ES_KEYS_TOML: &str = include_str!("../config/i18n/keys/es-ES.toml");
+const PT_PT_KEYS_TOML: &str = include_str!("../config/i18n/keys/pt-PT.toml");
+const IT_IT_KEYS_TOML: &str = include_str!("../config/i18n/keys/it-IT.toml");
+const JA_JP_KEYS_TOML: &str = include_str!("../config/i18n/keys/ja-JP.toml");
+const ZH_CN_KEYS_TOML: &str = include_str!("../config/i18n/keys/zh-CN.toml");
+const ZH_TW_KEYS_TOML: &str = include_str!("../config/i18n/keys/zh-TW.toml");
+const VI_VN_KEYS_TOML: &str = include_str!("../config/i18n/keys/vi-VN.toml");
+const TH_TH_KEYS_TOML: &str = include_str!("../config/i18n/keys/th-TH.toml");
+const HI_IN_KEYS_TOML: &str = include_str!("../config/i18n/keys/hi-IN.toml");
+const BN_IN_KEYS_TOML: &str = include_str!("../config/i18n/keys/bn-IN.toml");
+const TA_IN_KEYS_TOML: &str = include_str!("../config/i18n/keys/ta-IN.toml");
+const EO_001_KEYS_TOML: &str = include_str!("../config/i18n/keys/eo-001.toml");
+const DA_DK_KEYS_TOML: &str = include_str!("../config/i18n/keys/da-DK.toml");
+const LA_VA_KEYS_TOML: &str = include_str!("../config/i18n/keys/la-VA.toml");
+const GSW_CH_KEYS_TOML: &str = include_str!("../config/i18n/keys/gsw-CH.toml");
+const KO_KR_KEYS_TOML: &str = include_str!("../config/i18n/keys/ko-KR.toml");
+const RU_RU_KEYS_TOML: &str = include_str!("../config/i18n/keys/ru-RU.toml");
+const UK_UA_KEYS_TOML: &str = include_str!("../config/i18n/keys/uk-UA.toml");
 
 static RENDER_SLOTS: LazyLock<Arc<Semaphore>> =
     LazyLock::new(|| Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS)));
+
+#[derive(Debug, Clone, Deserialize)]
+struct LocaleConfig {
+    default_locale: String,
+    locales: Vec<Locale>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct Locale {
+    locale_id: String,
+    html_lang: String,
+    url_prefix: String,
+    display_name: String,
+    flag: String,
+}
+
+#[derive(Clone, Copy)]
+struct I18n {
+    locale: &'static Locale,
+    keys: &'static toml::Value,
+}
+
+static LOCALE_CONFIG: LazyLock<LocaleConfig> = LazyLock::new(|| {
+    let config = toml::from_str::<LocaleConfig>(LOCALES_TOML)
+        .unwrap_or_else(|error| panic!("valid locale config TOML: {error}"));
+    validate_locale_config(&config).unwrap_or_else(|error| panic!("valid locale config: {error}"));
+    config
+});
+
+static EN_EU_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("en-EU", EN_EU_KEYS_TOML));
+static EN_GB_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("en-GB", EN_GB_KEYS_TOML));
+static EN_US_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("en-US", EN_US_KEYS_TOML));
+static FR_FR_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("fr-FR", FR_FR_KEYS_TOML));
+static DE_DE_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("de-DE", DE_DE_KEYS_TOML));
+static SV_SE_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("sv-SE", SV_SE_KEYS_TOML));
+static NB_NO_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("nb-NO", NB_NO_KEYS_TOML));
+static NL_NL_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("nl-NL", NL_NL_KEYS_TOML));
+static FI_FI_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("fi-FI", FI_FI_KEYS_TOML));
+static IS_IS_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("is-IS", IS_IS_KEYS_TOML));
+static ES_ES_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("es-ES", ES_ES_KEYS_TOML));
+static PT_PT_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("pt-PT", PT_PT_KEYS_TOML));
+static IT_IT_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("it-IT", IT_IT_KEYS_TOML));
+static JA_JP_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ja-JP", JA_JP_KEYS_TOML));
+static ZH_CN_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("zh-CN", ZH_CN_KEYS_TOML));
+static ZH_TW_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("zh-TW", ZH_TW_KEYS_TOML));
+static VI_VN_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("vi-VN", VI_VN_KEYS_TOML));
+static TH_TH_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("th-TH", TH_TH_KEYS_TOML));
+static HI_IN_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("hi-IN", HI_IN_KEYS_TOML));
+static BN_IN_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("bn-IN", BN_IN_KEYS_TOML));
+static TA_IN_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ta-IN", TA_IN_KEYS_TOML));
+static EO_001_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("eo-001", EO_001_KEYS_TOML));
+static DA_DK_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("da-DK", DA_DK_KEYS_TOML));
+static LA_VA_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("la-VA", LA_VA_KEYS_TOML));
+static GSW_CH_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("gsw-CH", GSW_CH_KEYS_TOML));
+static KO_KR_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ko-KR", KO_KR_KEYS_TOML));
+static RU_RU_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ru-RU", RU_RU_KEYS_TOML));
+static UK_UA_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("uk-UA", UK_UA_KEYS_TOML));
+
+fn validate_locale_config(config: &LocaleConfig) -> Result<(), String> {
+    if config.default_locale != DEFAULT_LOCALE_ID {
+        return Err(format!("default locale must be {DEFAULT_LOCALE_ID}"));
+    }
+    if config.locales.is_empty() {
+        return Err("at least one locale is required".to_string());
+    }
+
+    let mut locale_ids = std::collections::BTreeSet::new();
+    let mut prefixes = std::collections::BTreeSet::new();
+    for locale in &config.locales {
+        if locale.locale_id.trim().is_empty()
+            || locale.html_lang.trim().is_empty()
+            || locale.url_prefix.trim().is_empty()
+            || locale.display_name.trim().is_empty()
+            || locale.flag.trim().is_empty()
+        {
+            return Err("locale fields must not be empty".to_string());
+        }
+        if !locale_ids.insert(locale.locale_id.as_str()) {
+            return Err(format!("duplicate locale id {}", locale.locale_id));
+        }
+        if !prefixes.insert(locale.url_prefix.as_str()) {
+            return Err(format!("duplicate locale prefix {}", locale.url_prefix));
+        }
+        if locale.url_prefix != locale.url_prefix.to_ascii_lowercase()
+            || locale.url_prefix.contains('/')
+            || locale.url_prefix.contains(char::is_whitespace)
+        {
+            return Err(format!("invalid locale prefix {}", locale.url_prefix));
+        }
+    }
+    if !locale_ids.contains(config.default_locale.as_str()) {
+        return Err("default locale missing from locale list".to_string());
+    }
+    Ok(())
+}
+
+fn parse_locale_keys(expected_locale_id: &str, raw: &str) -> toml::Value {
+    let keys = toml::from_str::<toml::Value>(raw)
+        .unwrap_or_else(|error| panic!("valid i18n key TOML for {expected_locale_id}: {error}"));
+    let locale_id = keys
+        .get("locale_id")
+        .and_then(toml::Value::as_str)
+        .unwrap_or_default();
+    assert_eq!(
+        locale_id, expected_locale_id,
+        "i18n key locale_id must match filename"
+    );
+    keys
+}
+
+fn locales() -> &'static [Locale] {
+    &LOCALE_CONFIG.locales
+}
+
+fn default_locale() -> &'static Locale {
+    locale_by_id(DEFAULT_LOCALE_ID).expect("validated default locale exists")
+}
+
+fn locale_by_id(locale_id: &str) -> Option<&'static Locale> {
+    locales()
+        .iter()
+        .find(|locale| locale.locale_id == locale_id)
+}
+
+fn locale_by_prefix(prefix: &str) -> Option<&'static Locale> {
+    let prefix = prefix.to_ascii_lowercase();
+    locales().iter().find(|locale| locale.url_prefix == prefix)
+}
+
+fn locale_keys(locale_id: &str) -> &'static toml::Value {
+    match locale_id {
+        "en-GB" => &EN_GB_KEYS,
+        "en-US" => &EN_US_KEYS,
+        "fr-FR" => &FR_FR_KEYS,
+        "de-DE" => &DE_DE_KEYS,
+        "sv-SE" => &SV_SE_KEYS,
+        "nb-NO" => &NB_NO_KEYS,
+        "nl-NL" => &NL_NL_KEYS,
+        "fi-FI" => &FI_FI_KEYS,
+        "is-IS" => &IS_IS_KEYS,
+        "es-ES" => &ES_ES_KEYS,
+        "pt-PT" => &PT_PT_KEYS,
+        "it-IT" => &IT_IT_KEYS,
+        "ja-JP" => &JA_JP_KEYS,
+        "zh-CN" => &ZH_CN_KEYS,
+        "zh-TW" => &ZH_TW_KEYS,
+        "vi-VN" => &VI_VN_KEYS,
+        "th-TH" => &TH_TH_KEYS,
+        "hi-IN" => &HI_IN_KEYS,
+        "bn-IN" => &BN_IN_KEYS,
+        "ta-IN" => &TA_IN_KEYS,
+        "eo-001" => &EO_001_KEYS,
+        "da-DK" => &DA_DK_KEYS,
+        "la-VA" => &LA_VA_KEYS,
+        "gsw-CH" => &GSW_CH_KEYS,
+        "ko-KR" => &KO_KR_KEYS,
+        "ru-RU" => &RU_RU_KEYS,
+        "uk-UA" => &UK_UA_KEYS,
+        "nl-BE" => &NL_NL_KEYS,
+        "fr-BE" | "fr-CA" => &FR_FR_KEYS,
+        "en-CA" => &EN_GB_KEYS,
+        _ => &EN_EU_KEYS,
+    }
+}
+
+fn i18n(locale: &'static Locale) -> I18n {
+    I18n {
+        locale,
+        keys: locale_keys(&locale.locale_id),
+    }
+}
+
+impl I18n {
+    fn t(&self, key: &str, fallback: &str) -> String {
+        self.keys
+            .get(key)
+            .and_then(toml::Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                key.split('.')
+                    .try_fold(self.keys, |value, part| value.get(part))
+                    .and_then(toml::Value::as_str)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| fallback.to_string())
+            })
+    }
+
+    fn t_attr(&self, key: &str, fallback: &str) -> String {
+        escape_html_attribute(&self.t(key, fallback))
+    }
+
+    fn locale_id(&self) -> &str {
+        &self.locale.locale_id
+    }
+
+    fn html_lang(&self) -> &str {
+        &self.locale.html_lang
+    }
+}
+
+fn localized_path(locale: &Locale, path: &str) -> String {
+    let path = path.trim_matches('/');
+    if locale.locale_id == DEFAULT_LOCALE_ID {
+        if path.is_empty() {
+            "/".to_string()
+        } else {
+            format!("/{path}")
+        }
+    } else if path.is_empty() {
+        format!("/{}/", locale.url_prefix)
+    } else {
+        format!("/{}/{path}", locale.url_prefix)
+    }
+}
+
+fn split_locale_path(path: &str) -> (&'static Locale, String) {
+    let clean = path.trim_matches('/');
+    let mut parts = clean.splitn(2, '/');
+    let first = parts.next().unwrap_or_default();
+    if let Some(locale) = locale_by_prefix(first) {
+        return (
+            locale,
+            parts
+                .next()
+                .unwrap_or_default()
+                .trim_matches('/')
+                .to_string(),
+        );
+    }
+    (default_locale(), clean.to_string())
+}
 
 struct AppState {
     storage: Option<Arc<S3Storage>>,
     trusted_proxies: TrustedProxies,
     rate_limiter: RateLimiter,
     metrics: Metrics,
+    observability: Observability,
 }
 
 impl Clone for AppState {
@@ -84,6 +381,7 @@ impl Clone for AppState {
             trusted_proxies: self.trusted_proxies.clone(),
             rate_limiter: self.rate_limiter.clone(),
             metrics: self.metrics.clone(),
+            observability: self.observability.clone(),
         }
     }
 }
@@ -98,12 +396,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|raw| raw.parse::<u16>().ok())
         .unwrap_or(DEFAULT_PORT);
     let address: SocketAddr = format!("{host}:{port}").parse()?;
+    let (observability, telemetry_guard) = Observability::from_env(env!("CARGO_PKG_VERSION"));
 
     let state = AppState {
         storage: S3Storage::from_env().await?.map(Arc::new),
         trusted_proxies: TrustedProxies::from_env()?,
         rate_limiter: RateLimiter::default(),
         metrics: Metrics::default(),
+        observability,
     };
 
     let app = Router::new()
@@ -113,6 +413,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/docs/openapi.json", get(openapi_json))
         .route("/terms", get(terms_page))
         .route("/privacy", get(privacy_page))
+        .route("/{locale}", get(localized_index))
+        .route("/{locale}/", get(localized_index))
+        .route("/{locale}/help", get(localized_help_page))
+        .route("/{locale}/docs", get(localized_docs_page))
+        .route("/{locale}/terms", get(localized_terms_page))
+        .route("/{locale}/privacy", get(localized_privacy_page))
         .route("/robots.txt", get(robots_txt))
         .route("/sitemap.xml", get(sitemap_xml))
         .route("/favicon.svg", get(favicon_svg))
@@ -123,10 +429,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(metrics_json).route_layer(middleware::from_fn(require_loopback_peer)),
         )
         .route("/healthz", get(healthz))
+        .route("/telemetry/page-visible", post(telemetry_page_visible))
+        .route("/telemetry/click", post(telemetry_click))
+        .route(
+            "/telemetry/avatar-generate",
+            post(telemetry_avatar_generate),
+        )
         .route("/v1/avatar", get(query_avatar))
         .route("/v1/avatar/link", get(query_avatar_link))
         .route("/avatar/{kind}/{identity}/{format}", get(path_avatar))
-        .with_state(state)
+        .with_state(state.clone())
+        .layer(middleware::from_fn_with_state(state, observe_request))
         .layer(middleware::from_fn(add_security_headers));
 
     let listener = tokio::net::TcpListener::bind(address).await?;
@@ -135,12 +448,411 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await?;
+    telemetry_guard.shutdown();
     Ok(())
 }
 
 fn init_logging() {
     let _ = tracing_subscriber::fmt::try_init();
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            tracing::warn!(%error, "failed to listen for ctrl-c");
+        }
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(error) => tracing::warn!(%error, "failed to listen for sigterm"),
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
+    }
+}
+
+#[derive(Clone)]
+struct Observability {
+    enabled: bool,
+    requests: Counter<u64>,
+    request_duration: Histogram<f64>,
+    page_views: Counter<u64>,
+    page_visible: Histogram<f64>,
+    outbound_clicks: Counter<u64>,
+    ui_actions: Counter<u64>,
+    ui_avatar_generations: Counter<u64>,
+    avatar_renders: Counter<u64>,
+    avatar_generation_duration: Histogram<f64>,
+}
+
+#[derive(Debug, Default)]
+struct TelemetryGuard {
+    meter_provider: Option<SdkMeterProvider>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RequestLabels {
+    route: String,
+    section: &'static str,
+    country: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VisiblePageEvent {
+    route: String,
+    section: &'static str,
+    seconds: u64,
+}
+
+impl Observability {
+    fn disabled() -> Self {
+        Self::from_meter(false)
+    }
+
+    fn from_env(service_version: &str) -> (Self, TelemetryGuard) {
+        if !otlp_enabled_from_env() {
+            return (Self::disabled(), TelemetryGuard::default());
+        }
+
+        match init_otel_metrics(service_version) {
+            Ok(guard) => (Self::from_meter(true), guard),
+            Err(error) => {
+                tracing::warn!(%error, "OpenTelemetry disabled after initialization failure");
+                (Self::disabled(), TelemetryGuard::default())
+            }
+        }
+    }
+
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn classify_request(path: &str) -> RequestLabels {
+        RequestLabels {
+            route: normalize_route(path),
+            section: section_for_path(path),
+            country: COUNTRY_UNKNOWN,
+        }
+    }
+
+    fn validate_visible_event(event: VisiblePageEvent) -> Option<VisiblePageEvent> {
+        if !is_allowed_visible_route(&event.route) || !is_allowed_visible_section(event.section) {
+            return None;
+        }
+        Some(VisiblePageEvent {
+            seconds: event.seconds.min(MAX_VISIBLE_SECONDS),
+            ..event
+        })
+    }
+
+    fn record_request(&self, labels: &RequestLabels, status: StatusCode, elapsed: Duration) {
+        if !self.enabled {
+            return;
+        }
+        let attributes = request_attributes(labels, status_class(status));
+        self.requests.add(1, &attributes);
+        self.request_duration
+            .record(elapsed.as_secs_f64(), &attributes);
+    }
+
+    fn record_page_view(&self, labels: &RequestLabels) {
+        if !self.enabled || !is_page_view_section(labels.section) {
+            return;
+        }
+        self.page_views.add(
+            1,
+            &[
+                KeyValue::new("route", labels.route.clone()),
+                KeyValue::new("section", labels.section),
+                KeyValue::new("country", labels.country),
+            ],
+        );
+    }
+
+    fn record_visible_page(&self, event: &VisiblePageEvent) {
+        if !self.enabled {
+            return;
+        }
+        self.page_visible.record(
+            event.seconds as f64,
+            &[
+                KeyValue::new("route", event.route.clone()),
+                KeyValue::new("section", event.section),
+            ],
+        );
+    }
+
+    fn record_click_for_locale(&self, locale: &str, kind: &str, target: &str) {
+        if !self.enabled {
+            return;
+        }
+        let attributes = [
+            KeyValue::new("kind", kind.to_owned()),
+            KeyValue::new("target", target.to_owned()),
+            KeyValue::new("locale", locale.to_owned()),
+            KeyValue::new("country", COUNTRY_UNKNOWN),
+        ];
+        if kind == "github" || kind == "outbound" {
+            self.outbound_clicks.add(1, &attributes);
+        } else {
+            self.ui_actions.add(1, &attributes);
+        }
+    }
+
+    fn record_ui_avatar_generation_for_locale(&self, locale: &str, style: &AvatarTelemetryStyle) {
+        if !self.enabled {
+            return;
+        }
+        let mut attributes = avatar_style_attributes("ui", style);
+        attributes.push(KeyValue::new("locale", locale.to_owned()));
+        self.ui_avatar_generations.add(1, &attributes);
+    }
+
+    fn record_avatar_render(
+        &self,
+        route: &'static str,
+        request: &AvatarRequest,
+        elapsed: Duration,
+    ) {
+        if !self.enabled {
+            return;
+        }
+        let style = AvatarTelemetryStyle::from_request(request);
+        let attributes = avatar_style_attributes(route, &style);
+        self.avatar_renders.add(1, &attributes);
+        self.avatar_generation_duration
+            .record(elapsed.as_secs_f64(), &attributes);
+    }
+
+    fn from_meter(enabled: bool) -> Self {
+        let meter = global::meter(OTEL_SERVICE_NAME);
+        Self {
+            enabled,
+            requests: meter.u64_counter("hashavatar_api_requests_total").build(),
+            request_duration: meter
+                .f64_histogram("hashavatar_api_request_duration_seconds")
+                .build(),
+            page_views: meter.u64_counter("hashavatar_api_page_views_total").build(),
+            page_visible: meter
+                .f64_histogram("hashavatar_api_page_visible_seconds")
+                .build(),
+            outbound_clicks: meter
+                .u64_counter("hashavatar_api_outbound_clicks_total")
+                .build(),
+            ui_actions: meter.u64_counter("hashavatar_api_ui_actions_total").build(),
+            ui_avatar_generations: meter
+                .u64_counter("hashavatar_api_ui_avatar_generations_total")
+                .build(),
+            avatar_renders: meter
+                .u64_counter("hashavatar_api_avatar_renders_total")
+                .build(),
+            avatar_generation_duration: meter
+                .f64_histogram("hashavatar_api_avatar_generation_duration_seconds")
+                .build(),
+        }
+    }
+}
+
+impl TelemetryGuard {
+    fn shutdown(self) {
+        if let Some(provider) = self.meter_provider
+            && let Err(error) = provider.shutdown()
+        {
+            tracing::warn!(?error, "failed to shutdown meter provider");
+        }
+    }
+}
+
+fn init_otel_metrics(
+    _service_version: &str,
+) -> Result<TelemetryGuard, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let mut exporter_builder = opentelemetry_otlp::MetricExporter::builder()
+        .with_http()
+        .with_protocol(Protocol::HttpBinary);
+    if let Some(endpoint) = otlp_endpoint_from_env() {
+        exporter_builder = exporter_builder.with_endpoint(endpoint);
+    }
+    let metric_exporter = exporter_builder.build()?;
+    let meter_provider = SdkMeterProvider::builder()
+        .with_periodic_exporter(metric_exporter)
+        .build();
+    global::set_meter_provider(meter_provider.clone());
+    Ok(TelemetryGuard {
+        meter_provider: Some(meter_provider),
+    })
+}
+
+fn otlp_enabled_from_env() -> bool {
+    otlp_enabled_from_vars(|name| std::env::var(name).ok())
+}
+
+fn otlp_enabled_from_vars(mut value_for: impl FnMut(&str) -> Option<String>) -> bool {
+    for name in [
+        "HASHAVATAR_OTLP",
+        "HASHAVATAR_OTLP_ENABLED",
+        "HASHAVATAR_OTEL_ENABLED",
+    ] {
+        if let Some(value) = value_for(name).and_then(|value| parse_env_switch(&value)) {
+            return value;
+        }
+    }
+    false
+}
+
+fn otlp_endpoint_from_env() -> Option<String> {
+    [
+        "HASHAVATAR_OTLP_ENDPOINT",
+        "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+    ]
+    .into_iter()
+    .find_map(|name| std::env::var(name).ok())
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty())
+}
+
+fn parse_env_switch(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" | "enabled" | "enable" => Some(true),
+        "0" | "false" | "no" | "off" | "disabled" | "disable" => Some(false),
+        _ => None,
+    }
+}
+
+fn normalize_route(path: &str) -> String {
+    let raw_clean = path
+        .split_once('?')
+        .map_or(path, |(without_query, _query)| without_query)
+        .trim_matches('/');
+    let (_locale, localized_clean) = split_locale_path(raw_clean);
+    let clean = localized_clean.trim_matches('/');
+    match clean {
+        "" => "/".to_string(),
+        "help" => "/help".to_string(),
+        "docs" => "/docs".to_string(),
+        "docs/openapi.json" => "/docs/openapi.json".to_string(),
+        "terms" => "/terms".to_string(),
+        "privacy" => "/privacy".to_string(),
+        "robots.txt" => "/robots.txt".to_string(),
+        "sitemap.xml" => "/sitemap.xml".to_string(),
+        "favicon.svg" => "/favicon.svg".to_string(),
+        "site.webmanifest" => "/site.webmanifest".to_string(),
+        "og.png" => "/og.png".to_string(),
+        "healthz" => "/healthz".to_string(),
+        "metrics" => "/metrics".to_string(),
+        "v1/avatar" => "/v1/avatar".to_string(),
+        "v1/avatar/link" => "/v1/avatar/link".to_string(),
+        value if value.starts_with("avatar/") => "/avatar/:kind/:identity/:format".to_string(),
+        value if value.starts_with("telemetry/") => "/telemetry/:event".to_string(),
+        _ => "unknown".to_string(),
+    }
+}
+
+fn section_for_path(path: &str) -> &'static str {
+    let route = normalize_route(path);
+    match route.as_str() {
+        "/" => "home",
+        "/help" | "/docs" | "/docs/openapi.json" => "docs",
+        "/terms" | "/privacy" => "legal",
+        "/v1/avatar" | "/v1/avatar/link" | "/avatar/:kind/:identity/:format" => "avatar",
+        "/og.png" => "preview",
+        "/robots.txt" | "/sitemap.xml" | "/favicon.svg" | "/site.webmanifest" => "static",
+        "/healthz" | "/metrics" => "ops",
+        "/telemetry/:event" => "telemetry",
+        _ => "not_found",
+    }
+}
+
+fn request_attributes(labels: &RequestLabels, status_class: &'static str) -> Vec<KeyValue> {
+    vec![
+        KeyValue::new("route", labels.route.clone()),
+        KeyValue::new("section", labels.section),
+        KeyValue::new("status_class", status_class),
+        KeyValue::new("country", labels.country),
+    ]
+}
+
+fn status_class(status: StatusCode) -> &'static str {
+    match status.as_u16() {
+        100..=199 => "1xx",
+        200..=299 => "2xx",
+        300..=399 => "3xx",
+        400..=499 => "4xx",
+        500..=599 => "5xx",
+        _ => "unknown",
+    }
+}
+
+fn is_page_view_section(section: &str) -> bool {
+    matches!(section, "home" | "docs" | "legal")
+}
+
+fn is_allowed_visible_route(route: &str) -> bool {
+    matches!(route, "/" | "/help" | "/docs" | "/terms" | "/privacy")
+}
+
+fn is_allowed_visible_section(section: &str) -> bool {
+    matches!(section, "home" | "docs" | "legal")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AvatarTelemetryStyle {
+    kind: AvatarKind,
+    background: AvatarBackground,
+    accessory: AvatarAccessory,
+    color: AvatarColor,
+    expression: AvatarExpression,
+    shape: AvatarShape,
+    size_bucket: &'static str,
+}
+
+impl AvatarTelemetryStyle {
+    fn from_request(request: &AvatarRequest) -> Self {
+        Self {
+            kind: request.kind,
+            background: request.background,
+            accessory: request.effective_accessory(),
+            color: request.color,
+            expression: request.effective_expression(),
+            shape: request.shape,
+            size_bucket: avatar_size_bucket(request.size),
+        }
+    }
+}
+
+fn avatar_style_attributes(route: &'static str, style: &AvatarTelemetryStyle) -> Vec<KeyValue> {
+    vec![
+        KeyValue::new("route", route),
+        KeyValue::new("kind", style.kind.as_str()),
+        KeyValue::new("background", style.background.as_str()),
+        KeyValue::new("accessory", style.accessory.as_str()),
+        KeyValue::new("color", style.color.as_str()),
+        KeyValue::new("expression", style.expression.as_str()),
+        KeyValue::new("shape", style.shape.as_str()),
+        KeyValue::new("size_bucket", style.size_bucket),
+    ]
+}
+
+fn avatar_size_bucket(size: u32) -> &'static str {
+    match size {
+        0..=127 => "64-127",
+        128..=255 => "128-255",
+        256..=511 => "256-511",
+        _ => "512-1024",
+    }
 }
 
 #[derive(Clone)]
@@ -204,7 +916,8 @@ async fn add_security_headers(mut request: Request, next: Next) -> Response {
 }
 
 fn route_uses_inline_html(path: &str) -> bool {
-    matches!(path, "/" | "/help" | "/docs" | "/terms" | "/privacy")
+    let (_locale, slug) = split_locale_path(path);
+    matches!(slug.as_str(), "" | "help" | "docs" | "terms" | "privacy")
 }
 
 fn apply_security_headers(headers: &mut HeaderMap, csp: &str, is_html_response: bool) {
@@ -310,27 +1023,158 @@ fn secure_rng_failure(error: getrandom::Error) -> Response {
     response
 }
 
+async fn observe_request(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    let method_is_get = request.method() == axum::http::Method::GET;
+    let labels = Observability::classify_request(request.uri().path());
+    let started = Instant::now();
+    let response = next.run(request).await;
+    let status = response.status();
+
+    state
+        .observability
+        .record_request(&labels, status, started.elapsed());
+    if method_is_get && status.is_success() {
+        state.observability.record_page_view(&labels);
+    }
+
+    response
+}
+
 async fn index(
     State(state): State<AppState>,
     Extension(csp_nonce): Extension<CspNonce>,
 ) -> Html<String> {
-    Html(render_index_html(&csp_nonce, state.storage.is_some()))
+    Html(render_index_html(
+        &csp_nonce,
+        state.storage.is_some(),
+        state.observability.enabled(),
+        i18n(default_locale()),
+    ))
 }
 
-async fn help_page(Extension(csp_nonce): Extension<CspNonce>) -> Html<String> {
-    Html(render_help_html(&csp_nonce))
+async fn help_page(
+    State(state): State<AppState>,
+    Extension(csp_nonce): Extension<CspNonce>,
+) -> Html<String> {
+    Html(render_help_html(
+        &csp_nonce,
+        state.observability.enabled(),
+        i18n(default_locale()),
+    ))
 }
 
-async fn docs_page(Extension(csp_nonce): Extension<CspNonce>) -> Html<String> {
-    Html(render_docs_html(&csp_nonce))
+async fn docs_page(
+    State(state): State<AppState>,
+    Extension(csp_nonce): Extension<CspNonce>,
+) -> Html<String> {
+    Html(render_docs_html(
+        &csp_nonce,
+        state.observability.enabled(),
+        i18n(default_locale()),
+    ))
 }
 
-async fn terms_page(Extension(csp_nonce): Extension<CspNonce>) -> Html<String> {
-    Html(render_terms_html(&csp_nonce))
+async fn terms_page(
+    State(state): State<AppState>,
+    Extension(csp_nonce): Extension<CspNonce>,
+) -> Html<String> {
+    Html(render_terms_html(
+        &csp_nonce,
+        state.observability.enabled(),
+        i18n(default_locale()),
+    ))
 }
 
-async fn privacy_page(Extension(csp_nonce): Extension<CspNonce>) -> Html<String> {
-    Html(render_privacy_html(&csp_nonce))
+async fn privacy_page(
+    State(state): State<AppState>,
+    Extension(csp_nonce): Extension<CspNonce>,
+) -> Html<String> {
+    Html(render_privacy_html(
+        &csp_nonce,
+        state.observability.enabled(),
+        i18n(default_locale()),
+    ))
+}
+
+async fn localized_index(
+    State(state): State<AppState>,
+    Extension(csp_nonce): Extension<CspNonce>,
+    Path(locale): Path<String>,
+) -> Response {
+    let Some(locale) = locale_by_prefix(&locale) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    Html(render_index_html(
+        &csp_nonce,
+        state.storage.is_some(),
+        state.observability.enabled(),
+        i18n(locale),
+    ))
+    .into_response()
+}
+
+async fn localized_help_page(
+    State(state): State<AppState>,
+    Extension(csp_nonce): Extension<CspNonce>,
+    Path(locale): Path<String>,
+) -> Response {
+    let Some(locale) = locale_by_prefix(&locale) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    Html(render_help_html(
+        &csp_nonce,
+        state.observability.enabled(),
+        i18n(locale),
+    ))
+    .into_response()
+}
+
+async fn localized_docs_page(
+    State(state): State<AppState>,
+    Extension(csp_nonce): Extension<CspNonce>,
+    Path(locale): Path<String>,
+) -> Response {
+    let Some(locale) = locale_by_prefix(&locale) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    Html(render_docs_html(
+        &csp_nonce,
+        state.observability.enabled(),
+        i18n(locale),
+    ))
+    .into_response()
+}
+
+async fn localized_terms_page(
+    State(state): State<AppState>,
+    Extension(csp_nonce): Extension<CspNonce>,
+    Path(locale): Path<String>,
+) -> Response {
+    let Some(locale) = locale_by_prefix(&locale) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    Html(render_terms_html(
+        &csp_nonce,
+        state.observability.enabled(),
+        i18n(locale),
+    ))
+    .into_response()
+}
+
+async fn localized_privacy_page(
+    State(state): State<AppState>,
+    Extension(csp_nonce): Extension<CspNonce>,
+    Path(locale): Path<String>,
+) -> Response {
+    let Some(locale) = locale_by_prefix(&locale) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    Html(render_privacy_html(
+        &csp_nonce,
+        state.observability.enabled(),
+        i18n(locale),
+    ))
+    .into_response()
 }
 
 async fn robots_txt() -> impl IntoResponse {
@@ -344,17 +1188,26 @@ async fn robots_txt() -> impl IntoResponse {
 }
 
 async fn sitemap_xml() -> impl IntoResponse {
+    let urls = ["", "help", "terms", "privacy"]
+        .into_iter()
+        .flat_map(|slug| {
+            locales().iter().map(move |locale| {
+                format!(
+                    "  <url><loc>{site}{path}</loc></url>",
+                    site = SITE_URL,
+                    path = localized_path(locale, slug)
+                )
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     (
         [(header::CONTENT_TYPE, "application/xml; charset=utf-8")],
         format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>{site}/</loc></url>
-  <url><loc>{site}/help</loc></url>
-  <url><loc>{site}/terms</loc></url>
-  <url><loc>{site}/privacy</loc></url>
-</urlset>"#,
-            site = SITE_URL
+{urls}
+</urlset>"#
         ),
     )
 }
@@ -587,6 +1440,153 @@ async fn healthz() -> impl IntoResponse {
             "status": "ok",
         })),
     )
+}
+
+#[derive(Debug, Deserialize)]
+struct VisibleTelemetryPayload {
+    route: String,
+    section: String,
+    locale: String,
+    seconds: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClickTelemetryPayload {
+    kind: String,
+    target: String,
+    locale: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AvatarGenerateTelemetryPayload {
+    locale: String,
+    kind: String,
+    background: String,
+    accessory: String,
+    color: String,
+    expression: String,
+    shape: String,
+    size: u32,
+}
+
+async fn telemetry_page_visible(
+    State(state): State<AppState>,
+    Json(payload): Json<VisibleTelemetryPayload>,
+) -> Response {
+    if !state.observability.enabled() {
+        return StatusCode::ACCEPTED.into_response();
+    }
+
+    let section = match visible_section_from_str(&payload.section) {
+        Some(section) => section,
+        None => return bad_request("invalid telemetry event"),
+    };
+    if !is_allowed_locale_id(&payload.locale) {
+        return bad_request("invalid telemetry event");
+    }
+    let event = VisiblePageEvent {
+        route: normalize_route(&payload.route),
+        section,
+        seconds: payload.seconds,
+    };
+    match Observability::validate_visible_event(event) {
+        Some(event) => {
+            state.observability.record_visible_page(&event);
+            StatusCode::ACCEPTED.into_response()
+        }
+        None => bad_request("invalid telemetry event"),
+    }
+}
+
+async fn telemetry_click(
+    State(state): State<AppState>,
+    Json(payload): Json<ClickTelemetryPayload>,
+) -> Response {
+    if !is_allowed_click(&payload.kind, &payload.target) || !is_allowed_locale_id(&payload.locale) {
+        return bad_request("invalid telemetry event");
+    }
+    state
+        .observability
+        .record_click_for_locale(&payload.locale, &payload.kind, &payload.target);
+    StatusCode::ACCEPTED.into_response()
+}
+
+async fn telemetry_avatar_generate(
+    State(state): State<AppState>,
+    Json(payload): Json<AvatarGenerateTelemetryPayload>,
+) -> Response {
+    let style = match avatar_telemetry_style_from_payload(&payload) {
+        Ok(style) => style,
+        Err(message) => return bad_request(message),
+    };
+    state
+        .observability
+        .record_ui_avatar_generation_for_locale(&payload.locale, &style);
+    StatusCode::ACCEPTED.into_response()
+}
+
+fn is_allowed_locale_id(locale_id: &str) -> bool {
+    locale_by_id(locale_id).is_some()
+}
+
+fn visible_section_from_str(section: &str) -> Option<&'static str> {
+    match section {
+        "home" => Some("home"),
+        "docs" => Some("docs"),
+        "legal" => Some("legal"),
+        _ => None,
+    }
+}
+
+fn is_allowed_click(kind: &str, target: &str) -> bool {
+    matches!(
+        (kind, target),
+        ("github", "repository")
+            | ("outbound", "crate")
+            | ("action", "copy-url")
+            | ("action", "copy-signed-link")
+            | ("action", "download")
+            | ("action", "open-raw")
+            | ("action", "preset-card")
+            | ("action", "preset-prev")
+            | ("action", "preset-next")
+    )
+}
+
+fn avatar_telemetry_style_from_payload(
+    payload: &AvatarGenerateTelemetryPayload,
+) -> Result<AvatarTelemetryStyle, &'static str> {
+    if !(MIN_SIZE..=MAX_SIZE).contains(&payload.size) {
+        return Err("invalid telemetry event");
+    }
+    if !is_allowed_locale_id(&payload.locale) {
+        return Err("invalid telemetry event");
+    }
+
+    let kind = AvatarKind::from_str(&payload.kind).map_err(|_| "invalid telemetry event")?;
+    let background =
+        AvatarBackground::from_str(&payload.background).map_err(|_| "invalid telemetry event")?;
+    let mut accessory =
+        AvatarAccessory::from_str(&payload.accessory).map_err(|_| "invalid telemetry event")?;
+    let color = AvatarColor::from_str(&payload.color).map_err(|_| "invalid telemetry event")?;
+    let mut expression =
+        AvatarExpression::from_str(&payload.expression).map_err(|_| "invalid telemetry event")?;
+    let shape = AvatarShape::from_str(&payload.shape).map_err(|_| "invalid telemetry event")?;
+
+    if !kind.supports_face_layers() {
+        accessory = DEFAULT_ACCESSORY;
+        expression = DEFAULT_EXPRESSION;
+    }
+
+    Ok(AvatarTelemetryStyle {
+        kind,
+        background,
+        accessory,
+        color,
+        expression,
+        shape,
+        size_bucket: avatar_size_bucket(payload.size),
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -1085,7 +2085,11 @@ async fn serve_avatar(state: AppState, request: AvatarRequest) -> Response {
         .metrics
         .avatar_rendered_total
         .fetch_add(1, Ordering::Relaxed);
-    state.metrics.observe_generation(started.elapsed());
+    let elapsed = started.elapsed();
+    state.metrics.observe_generation(elapsed);
+    state
+        .observability
+        .record_avatar_render("avatar", &request, elapsed);
 
     let format_name = request.format.as_str();
     state.metrics.increment_format(format_name);
@@ -1134,11 +2138,15 @@ async fn serve_avatar_link(state: AppState, request: AvatarRequest) -> Response 
     };
 
     let started = Instant::now();
-    let asset = match generate_avatar_asset(request).await {
+    let asset = match generate_avatar_asset(request.clone()).await {
         Ok(asset) => asset,
         Err(response) => return response,
     };
-    state.metrics.observe_generation(started.elapsed());
+    let elapsed = started.elapsed();
+    state.metrics.observe_generation(elapsed);
+    state
+        .observability
+        .record_avatar_render("avatar-link", &request, elapsed);
     state
         .metrics
         .avatar_link_total
@@ -1507,14 +2515,55 @@ fn shared_page_styles() -> &'static str {
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
+      align-items: center;
     }
-    .nav-links a, .footer-links a, .inline-link {
+    .nav-links a, .footer-links a, .inline-link, .language-switcher summary {
       color: var(--accent-strong);
       text-decoration: none;
       font-weight: 700;
     }
-    .nav-links a:hover, .footer-links a:hover, .inline-link:hover {
+    .nav-links a:hover, .footer-links a:hover, .inline-link:hover, .language-switcher summary:hover {
       text-decoration: underline;
+    }
+    .language-switcher {
+      position: relative;
+    }
+    .language-switcher summary {
+      cursor: pointer;
+      list-style: none;
+    }
+    .language-switcher summary::-webkit-details-marker {
+      display: none;
+    }
+    .language-switcher summary span::after {
+      content: " ▾";
+      font-size: 0.82em;
+    }
+    .language-menu {
+      position: absolute;
+      right: 0;
+      bottom: calc(100% + 8px);
+      min-width: 190px;
+      padding: 8px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 18px 40px rgba(82,96,109,0.16);
+      display: grid;
+      gap: 4px;
+      z-index: 10;
+    }
+    .language-menu a {
+      padding: 8px 10px;
+      border-radius: 10px;
+      color: var(--ink);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .language-menu a:hover, .language-menu a[aria-current="true"] {
+      background: rgba(217, 122, 66, 0.12);
+      color: var(--accent-strong);
+      text-decoration: none;
     }
     .page {
       padding: 36px;
@@ -1593,6 +2642,10 @@ fn shared_page_styles() -> &'static str {
         align-items: start;
         flex-direction: column;
       }
+      .language-menu {
+        left: 0;
+        right: auto;
+      }
       .page {
         padding: 24px;
       }
@@ -1600,23 +2653,65 @@ fn shared_page_styles() -> &'static str {
     "#
 }
 
-fn render_footer_html() -> String {
+fn render_footer_html(i18n: I18n, path: &str) -> String {
     format!(
         r#"<footer class="site-footer">
   <div class="footer-links">
-    <a href="/help">Help</a>
-    <a href="/docs">Docs</a>
-    <a href="/terms">Terms</a>
-    <a href="/privacy">Privacy</a>
-    <a href="{repo}" target="_blank" rel="noreferrer">Repository</a>
-    <a href="{crate_url}" target="_blank" rel="noreferrer">Rust Crate</a>
+    <a href="{help_href}">{help}</a>
+    <a href="{docs_href}">{docs}</a>
+    <a href="{terms_href}">{terms}</a>
+    <a href="{privacy_href}">{privacy}</a>
+    <a href="{repo}" target="_blank" rel="noreferrer">{repository}</a>
+    <a href="{crate_url}" target="_blank" rel="noreferrer">{rust_crate}</a>
+    {language_switcher}
   </div>
   <div class="footer-copy">
-    hashavatar.app is a deterministic avatar API and demo service built on the open-source <code>hashavatar</code> Rust crate.
+    {copy}
   </div>
 </footer>"#,
+        help_href = localized_path(i18n.locale, "help"),
+        docs_href = localized_path(i18n.locale, "docs"),
+        terms_href = localized_path(i18n.locale, "terms"),
+        privacy_href = localized_path(i18n.locale, "privacy"),
+        help = i18n.t_attr("nav.help", "Help"),
+        docs = i18n.t_attr("nav.docs", "Docs"),
+        terms = i18n.t_attr("nav.terms", "Terms"),
+        privacy = i18n.t_attr("nav.privacy", "Privacy"),
+        repository = i18n.t_attr("nav.repository", "Repository"),
+        rust_crate = i18n.t_attr("nav.rust_crate", "Rust Crate"),
+        language_switcher = render_language_switcher(i18n, path),
+        copy = i18n.t_attr("footer.copy", "hashavatar.app is a deterministic avatar API and demo service built on the open-source hashavatar Rust crate."),
         repo = REPOSITORY_URL,
         crate_url = CRATE_URL,
+    )
+}
+
+fn render_language_switcher(i18n: I18n, path: &str) -> String {
+    let active = i18n.locale;
+    let active_label = format!("{} {}", active.flag, active.display_name);
+    let links = locales()
+        .iter()
+        .map(|locale| {
+            let label = escape_html_attribute(&format!("{} {}", locale.flag, locale.display_name));
+            let href = escape_html_attribute(&localized_path(locale, path));
+            let current = if locale.locale_id == active.locale_id {
+                r#" aria-current="true""#
+            } else {
+                ""
+            };
+            format!(r#"<a href="{href}"{current}>{label}</a>"#)
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!(
+        r#"<details class="language-switcher">
+      <summary aria-label="{label}"><span>{active}</span></summary>
+      <div class="language-menu">{links}</div>
+    </details>"#,
+        label = i18n.t_attr("language.selector_label", "Language"),
+        active = escape_html_attribute(&active_label),
+        links = links,
     )
 }
 
@@ -1837,6 +2932,36 @@ fn shape_options_html(selected: AvatarShape) -> String {
         .join("\n")
 }
 
+fn render_nav_html(i18n: I18n) -> String {
+    format!(
+        r#"<div class="site-nav">
+      <a class="brand" href="{home_href}">{site_name}</a>
+      <div class="nav-links">
+        <a href="{help_href}">{help}</a>
+        <a href="{docs_href}">{docs}</a>
+        <a href="{terms_href}">{terms}</a>
+        <a href="{privacy_href}">{privacy}</a>
+        <a href="{repo}" target="_blank" rel="noreferrer">{repository}</a>
+        <a href="{crate_url}" target="_blank" rel="noreferrer">{rust_crate}</a>
+      </div>
+    </div>"#,
+        home_href = localized_path(i18n.locale, ""),
+        help_href = localized_path(i18n.locale, "help"),
+        docs_href = localized_path(i18n.locale, "docs"),
+        terms_href = localized_path(i18n.locale, "terms"),
+        privacy_href = localized_path(i18n.locale, "privacy"),
+        help = i18n.t_attr("nav.help", "Help"),
+        docs = i18n.t_attr("nav.docs", "Docs"),
+        terms = i18n.t_attr("nav.terms", "Terms"),
+        privacy = i18n.t_attr("nav.privacy", "Privacy"),
+        repository = i18n.t_attr("nav.repository", "Repository"),
+        rust_crate = i18n.t_attr("nav.rust_crate", "Rust Crate"),
+        repo = REPOSITORY_URL,
+        crate_url = CRATE_URL,
+        site_name = SITE_NAME,
+    )
+}
+
 #[derive(Serialize)]
 struct PresetExample {
     label: &'static str,
@@ -1925,12 +3050,14 @@ fn preset_examples_json() -> String {
     PRESET_EXAMPLES_JSON.to_string()
 }
 
-fn render_meta_tags(title: &str, description: &str, path: &str, csp_nonce: &CspNonce) -> String {
-    let canonical = if path == "/" {
-        format!("{SITE_URL}/")
-    } else {
-        format!("{SITE_URL}{path}")
-    };
+fn render_meta_tags(
+    title: &str,
+    description: &str,
+    path: &str,
+    csp_nonce: &CspNonce,
+    i18n: I18n,
+) -> String {
+    let canonical = format!("{SITE_URL}{}", localized_path(i18n.locale, path));
     let preview_image = format!(
         "{site}/og.png?id=hashavatar.app&kind=monster",
         site = SITE_URL
@@ -2018,19 +3145,136 @@ fn render_json_ld(title: &str, description: &str, canonical: &str, csp_nonce: &C
     )
 }
 
-fn render_page_html(
-    page_title: &str,
-    description: &str,
-    path: &str,
-    eyebrow: &str,
-    lead: &str,
-    body: &str,
-    csp_nonce: &CspNonce,
-) -> String {
+fn render_telemetry_script(csp_nonce: &CspNonce, route: &str, section: &str, i18n: I18n) -> String {
     let nonce = escape_html_attribute(csp_nonce.as_str());
+    let route = json_script_string(route, "/");
+    let section = json_script_string(section, "home");
+    let locale = json_script_string(i18n.locale_id(), DEFAULT_LOCALE_ID);
+    let repository_url = json_script_string(REPOSITORY_URL, REPOSITORY_URL);
+    let crate_url = json_script_string(CRATE_URL, CRATE_URL);
+
+    format!(
+        r#"<script nonce="{nonce}">
+    (function () {{
+      const pageRoute = {route};
+      const pageSection = {section};
+      const pageLocale = {locale};
+      const repositoryUrl = {repository_url};
+      const crateUrl = {crate_url};
+      let visibleStartedAt = Date.now();
+      let visibleMillis = 0;
+
+      function sendJson(endpoint, payload) {{
+        try {{
+          const body = JSON.stringify(payload);
+          if (navigator.sendBeacon) {{
+            const blob = new Blob([body], {{ type: "application/json" }});
+            if (navigator.sendBeacon(endpoint, blob)) {{
+              return;
+            }}
+          }}
+          fetch(endpoint, {{
+            method: "POST",
+            headers: {{ "content-type": "application/json" }},
+            body,
+            credentials: "same-origin",
+            keepalive: true,
+          }}).catch(() => {{}});
+        }} catch (_) {{}}
+      }}
+
+      function flushVisibleTime() {{
+        const activeMillis = document.visibilityState === "visible"
+          ? Math.max(0, Date.now() - visibleStartedAt)
+          : 0;
+        const seconds = Math.min(86400, Math.round((visibleMillis + activeMillis) / 1000));
+        if (seconds > 0) {{
+          sendJson("/telemetry/page-visible", {{
+            route: pageRoute,
+            section: pageSection,
+            locale: pageLocale,
+            seconds,
+          }});
+        }}
+        visibleMillis = 0;
+        visibleStartedAt = Date.now();
+      }}
+
+      document.addEventListener("visibilitychange", () => {{
+        if (document.visibilityState === "hidden") {{
+          visibleMillis += Math.max(0, Date.now() - visibleStartedAt);
+          flushVisibleTime();
+        }} else {{
+          visibleStartedAt = Date.now();
+        }}
+      }});
+      window.addEventListener("pagehide", flushVisibleTime);
+
+      document.addEventListener("click", (event) => {{
+        const link = event.target.closest && event.target.closest("a[href]");
+        if (!link) {{
+          return;
+        }}
+        const href = link.href || "";
+        if (href.startsWith(repositoryUrl)) {{
+          sendJson("/telemetry/click", {{ kind: "github", target: "repository", locale: pageLocale }});
+        }} else if (href.startsWith(crateUrl)) {{
+          sendJson("/telemetry/click", {{ kind: "outbound", target: "crate", locale: pageLocale }});
+        }}
+      }});
+
+      window.hashavatarTelemetry = {{
+        click(kind, target) {{
+          sendJson("/telemetry/click", {{ kind, target, locale: pageLocale }});
+        }},
+        avatar(payload) {{
+          sendJson("/telemetry/avatar-generate", Object.assign({{ locale: pageLocale }}, payload));
+        }},
+      }};
+    }})();
+  </script>"#,
+        nonce = nonce,
+        route = route,
+        section = section,
+        locale = locale,
+        repository_url = repository_url,
+        crate_url = crate_url,
+    )
+}
+
+struct PageHtmlParams<'a> {
+    page_title: String,
+    description: String,
+    path: &'a str,
+    eyebrow: String,
+    lead: String,
+    body: String,
+    csp_nonce: &'a CspNonce,
+    telemetry_enabled: bool,
+    i18n: I18n,
+}
+
+fn render_page_html(params: PageHtmlParams<'_>) -> String {
+    let PageHtmlParams {
+        page_title,
+        description,
+        path,
+        eyebrow,
+        lead,
+        body,
+        csp_nonce,
+        telemetry_enabled,
+        i18n,
+    } = params;
+    let nonce = escape_html_attribute(csp_nonce.as_str());
+    let telemetry_script = if telemetry_enabled {
+        render_telemetry_script(csp_nonce, path, section_for_path(path), i18n)
+    } else {
+        String::new()
+    };
     format!(
         r#"<!DOCTYPE html>
-<html lang="en">
+<html lang="{html_lang}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -2039,17 +3283,7 @@ fn render_page_html(
 </head>
 <body>
   <main>
-    <div class="site-nav">
-      <a class="brand" href="/">{site_name}</a>
-      <div class="nav-links">
-        <a href="/help">Help</a>
-        <a href="/docs">Docs</a>
-        <a href="/terms">Terms</a>
-        <a href="/privacy">Privacy</a>
-        <a href="{repo}" target="_blank" rel="noreferrer">Repository</a>
-        <a href="{crate_url}" target="_blank" rel="noreferrer">Rust Crate</a>
-      </div>
-    </div>
+    {nav}
     <section class="page">
       <div class="eyebrow">{eyebrow}</div>
       <h1>{page_title}</h1>
@@ -2058,28 +3292,39 @@ fn render_page_html(
     </section>
     {footer}
   </main>
+  {telemetry_script}
 </body>
 </html>"#,
-        meta_tags = render_meta_tags(page_title, description, path, csp_nonce),
+        meta_tags = render_meta_tags(&page_title, &description, path, csp_nonce, i18n),
         styles = shared_page_styles(),
         nonce = nonce,
-        site_name = SITE_NAME,
+        html_lang = escape_html_attribute(i18n.html_lang()),
+        nav = render_nav_html(i18n),
         eyebrow = eyebrow,
         page_title = page_title,
         lead = lead,
         body = body,
-        footer = render_footer_html(),
-        repo = REPOSITORY_URL,
-        crate_url = CRATE_URL,
+        footer = render_footer_html(i18n, path),
+        telemetry_script = telemetry_script,
     )
 }
 
-fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> String {
-    let description = "Deterministic procedural avatars for opaque user ids, stable usernames, and one-way hashes. Generate 31 avatar families as WebP images.";
+fn render_index_html(
+    csp_nonce: &CspNonce,
+    storage_links_enabled: bool,
+    telemetry_enabled: bool,
+    i18n: I18n,
+) -> String {
+    let description = i18n.t("hero.description", "Deterministic procedural avatars for opaque user ids, stable usernames, and one-way hashes. Generate 31 avatar families as WebP images.");
     let nonce = escape_html_attribute(csp_nonce.as_str());
+    let telemetry_script = if telemetry_enabled {
+        render_telemetry_script(csp_nonce, "/", "home", i18n)
+    } else {
+        String::new()
+    };
     format!(
         r#"<!DOCTYPE html>
-<html lang="en">
+<html lang="{html_lang}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -2309,57 +3554,42 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
 </head>
 <body>
   <main>
-    <div class="site-nav">
-      <a class="brand" href="/">hashavatar.app</a>
-      <div class="nav-links">
-        <a href="/help">Help</a>
-        <a href="/docs">Docs</a>
-        <a href="/terms">Terms</a>
-        <a href="/privacy">Privacy</a>
-        <a href="{repo}" target="_blank" rel="noreferrer">Repository</a>
-        <a href="{crate_url}" target="_blank" rel="noreferrer">Rust Crate</a>
-      </div>
-    </div>
+    {nav}
     <section class="hero">
       <div class="copy">
-        <div class="eyebrow">hashavatar.app</div>
-        <h1>Generate A Public Avatar In Seconds</h1>
-        <p>
-          Turn any opaque user id, stable username, or one-way hash into a deterministic avatar URL.
-          Choose the style, background, and size, then copy the WebP URL, download the result, or create a signed object-storage link.
-        </p>
-        <p>
-          Privacy-conscious integration tip: email-shaped identifiers are accepted for convenience, but a stable internal id or one-way hash is better when you want less personal data in URL logs.
-        </p>
+        <div class="eyebrow">{hero_eyebrow}</div>
+        <h1>{hero_title}</h1>
+        <p>{hero_description}</p>
+        <p>{hero_privacy_tip}</p>
 
         <div class="generator">
           <div class="field-grid full">
             <div>
-              <label for="identity">Identity</label>
+              <label for="identity">{identity_label}</label>
               <input id="identity" type="text" value="{id}" placeholder="cat@hashavatar.app" spellcheck="false" autocomplete="off" />
             </div>
           </div>
 
           <div class="field-grid">
             <div>
-              <label for="tenant">Namespace Tenant</label>
+              <label for="tenant">{tenant_label}</label>
               <input id="tenant" type="text" value="{tenant}" placeholder="public" spellcheck="false" autocomplete="off" />
             </div>
             <div>
-              <label for="style-version">Style Version</label>
+              <label for="style-version">{style_version_label}</label>
               <input id="style-version" type="text" value="{style_version}" placeholder="v2" spellcheck="false" autocomplete="off" />
             </div>
           </div>
 
           <div class="field-grid">
             <div>
-              <label for="kind">Avatar Type</label>
+              <label for="kind">{avatar_type_label}</label>
               <select id="kind">
                 {kind_options}
               </select>
             </div>
             <div>
-              <label for="background">Background</label>
+              <label for="background">{background_label}</label>
               <select id="background">
                 {background_options}
               </select>
@@ -2368,13 +3598,13 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
 
           <div class="field-grid">
             <div>
-              <label for="accessory">Accessory</label>
+              <label for="accessory">{accessory_label}</label>
               <select id="accessory">
                 {accessory_options}
               </select>
             </div>
             <div>
-              <label for="color">Accent Color</label>
+              <label for="color">{color_label}</label>
               <select id="color">
                 {color_options}
               </select>
@@ -2383,13 +3613,13 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
 
           <div class="field-grid">
             <div>
-              <label for="expression">Expression</label>
+              <label for="expression">{expression_label}</label>
               <select id="expression">
                 {expression_options}
               </select>
             </div>
             <div>
-              <label for="shape">Shape</label>
+              <label for="shape">{shape_label}</label>
               <select id="shape">
                 {shape_options}
               </select>
@@ -2398,7 +3628,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
 
           <div class="field-grid full">
             <div>
-              <label for="size">Size</label>
+              <label for="size">{size_label}</label>
               <select id="size">
                 <option value="128">128</option>
                 <option value="256" selected>256</option>
@@ -2410,24 +3640,24 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
           </div>
 
           <div class="actions">
-            <button id="copy-button" type="button">Copy URL</button>
-            <button id="copy-signed-button" type="button" class="secondary"{signed_disabled}>Copy Signed Link</button>
-            <a id="download-button" class="button-link" href="/v1/avatar?id={id}&algorithm=sha512&kind=cat&background=themed&format=webp&size=256" download="hashavatar.webp">Download</a>
-            <a id="open-button" class="button-link secondary" href="/v1/avatar?id={id}&algorithm=sha512&kind=cat&background=themed&format=webp&size=256" target="_blank" rel="noreferrer">Open Raw</a>
+            <button id="copy-button" type="button">{copy_url_label}</button>
+            <button id="copy-signed-button" type="button" class="secondary"{signed_disabled}>{copy_signed_label}</button>
+            <a id="download-button" class="button-link" href="/v1/avatar?id={id}&algorithm=sha512&kind=cat&background=themed&format=webp&size=256" download="hashavatar.webp">{download_label}</a>
+            <a id="open-button" class="button-link secondary" href="/v1/avatar?id={id}&algorithm=sha512&kind=cat&background=themed&format=webp&size=256" target="_blank" rel="noreferrer">{open_raw_label}</a>
           </div>
 
           <div class="url-panel">
-            <div class="url-label">Direct URL</div>
+            <div class="url-label">{direct_url_label}</div>
             <div id="avatar-url" class="url-text"></div>
           </div>
 
           <div class="url-panel">
-            <div class="url-label">Signed Storage Link</div>
-            <div id="signed-url" class="url-text">Enable S3 configuration on the server to use signed links.</div>
+            <div class="url-label">{signed_storage_label}</div>
+            <div id="signed-url" class="url-text">{signed_unavailable}</div>
           </div>
 
           <div class="url-panel">
-            <div class="url-label">Machine-Readable API</div>
+            <div class="url-label">{machine_api_label}</div>
             <div class="url-text"><a class="inline-link" href="/docs/openapi.json">/docs/openapi.json</a></div>
           </div>
         </div>
@@ -2438,15 +3668,15 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
           <img id="avatar-preview" src="/v1/avatar?id={id}&algorithm=sha512&kind=cat&background=themed&format=webp&size=256" alt="Generated avatar preview" />
         </div>
         <div class="preview-meta">
-          <div><strong>API:</strong> <span id="api-mode">/v1/avatar</span></div>
-          <div><strong>Storage:</strong> optional S3 persistence with presigned links via <code>/v1/avatar/link</code></div>
-          <div><strong>Cache:</strong> Cloudflare-friendly long cache headers</div>
-          <div><strong>Tip:</strong> Every URL is deterministic, so you can embed it directly in your app.</div>
+          <div><strong>{api_label}:</strong> <span id="api-mode">/v1/avatar</span></div>
+          <div><strong>{storage_label}:</strong> {storage_text} <code>/v1/avatar/link</code></div>
+          <div><strong>{cache_label}:</strong> {cache_text}</div>
+          <div><strong>{tip_label}:</strong> {tip_text}</div>
         </div>
 
         <div class="examples">
           <div class="example-header">
-            <div class="url-label">Preset Examples</div>
+            <div class="url-label">{preset_examples_label}</div>
             <div id="example-page" class="example-page"></div>
           </div>
           <div class="example-grid" id="example-grid">
@@ -2460,6 +3690,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
     </section>
     {footer}
   </main>
+  {telemetry_script}
   <script nonce="{nonce}">
     const identityEl = document.getElementById("identity");
     const tenantEl = document.getElementById("tenant");
@@ -2583,7 +3814,7 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
 
     async function updateSignedUrl() {{
       if (!storageLinksEnabled) {{
-        signedUrlEl.textContent = "Signed storage links are unavailable until S3 is configured on the server.";
+        signedUrlEl.textContent = {signed_unavailable_json};
         copySignedButton.disabled = true;
         return;
       }}
@@ -2591,14 +3822,14 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       try {{
         const response = await fetch(currentSignedUrlEndpoint(), {{ headers: {{ "accept": "application/json" }} }});
         if (!response.ok) {{
-          signedUrlEl.textContent = "Signed storage links are unavailable until S3 is configured on the server.";
+          signedUrlEl.textContent = {signed_unavailable_json};
           return;
         }}
         const payload = await response.json();
         signedUrlEl.textContent = payload.signed_url;
         copySignedButton.disabled = false;
       }} catch (_) {{
-        signedUrlEl.textContent = "Signed storage links are unavailable until S3 is configured on the server.";
+        signedUrlEl.textContent = {signed_unavailable_json};
         copySignedButton.disabled = true;
       }}
     }}
@@ -2629,6 +3860,15 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
       downloadButton.setAttribute("download", `hashavatar-${{kindEl.value}}.webp`);
       openButton.href = url;
       updateSignedUrl();
+      window.hashavatarTelemetry?.avatar({{
+        kind: kindEl.value,
+        background: backgroundEl.value,
+        accessory: styleParams.accessory,
+        color: styleParams.color,
+        expression: styleParams.expression,
+        shape: styleParams.shape,
+        size: Number(sizeEl.value) || 0,
+      }});
     }}
 
     function scheduleRefresh() {{
@@ -2672,10 +3912,13 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         const button = document.createElement("button");
         button.type = "button";
         button.className = "example-card";
-        button.addEventListener("click", () => setFromPreset(preset));
+        button.addEventListener("click", () => {{
+          window.hashavatarTelemetry?.click("action", "preset-card");
+          setFromPreset(preset);
+        }});
 
         const query = new URLSearchParams({{
-          id: currentIdentity(),
+          id: preset.id,
           tenant: tenantEl.value.trim() || "{tenant}",
           style_version: styleVersionEl.value.trim() || "{style_version}",
           algorithm: "sha512",
@@ -2690,11 +3933,11 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         }});
         const image = document.createElement("img");
         image.src = `/v1/avatar?${{query.toString()}}`;
-        image.alt = `${{preset.label}} preset`;
+        image.alt = `${{preset.label}} {preset_suffix_js}`;
 
         const title = document.createElement("div");
         title.className = "example-title";
-        title.textContent = `${{preset.label}} preset`;
+        title.textContent = `${{preset.label}} {preset_suffix_js}`;
 
         button.append(image, title);
         exampleGrid.append(button);
@@ -2709,13 +3952,25 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         await navigator.clipboard.writeText(text);
         button.textContent = successText;
       }} catch (_) {{
-        button.textContent = "Copy failed";
+        button.textContent = {copy_failed_json};
       }}
       window.setTimeout(() => button.textContent = idleText, 1200);
     }}
 
-    copyButton.addEventListener("click", () => copyText(`${{window.location.origin}}${{currentUrl()}}`, copyButton, "Copy URL", "Copied"));
-    copySignedButton.addEventListener("click", () => copyText(signedUrlEl.textContent, copySignedButton, "Copy Signed Link", "Copied"));
+    copyButton.addEventListener("click", () => {{
+      window.hashavatarTelemetry?.click("action", "copy-url");
+      copyText(`${{window.location.origin}}${{currentUrl()}}`, copyButton, {copy_url_json}, {copied_json});
+    }});
+    copySignedButton.addEventListener("click", () => {{
+      window.hashavatarTelemetry?.click("action", "copy-signed-link");
+      copyText(signedUrlEl.textContent, copySignedButton, {copy_signed_json}, {copied_json});
+    }});
+    downloadButton.addEventListener("click", () => {{
+      window.hashavatarTelemetry?.click("action", "download");
+    }});
+    openButton.addEventListener("click", () => {{
+      window.hashavatarTelemetry?.click("action", "open-raw");
+    }});
 
     [identityEl, tenantEl, styleVersionEl].forEach((el) => {{
       el.addEventListener("input", scheduleFullRefresh);
@@ -2739,11 +3994,13 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
     }});
 
     presetPrev.addEventListener("click", () => {{
+      window.hashavatarTelemetry?.click("action", "preset-prev");
       presetPage -= 1;
       renderPresetPage();
     }});
 
     presetNext.addEventListener("click", () => {{
+      window.hashavatarTelemetry?.click("action", "preset-next");
       presetPage += 1;
       renderPresetPage();
     }});
@@ -2766,44 +4023,99 @@ fn render_index_html(csp_nonce: &CspNonce, storage_links_enabled: bool) -> Strin
         preset_page_size = PRESET_PAGE_SIZE,
         storage_links_enabled = storage_links_enabled,
         signed_disabled = disabled_attr(!storage_links_enabled),
-        meta_tags = render_meta_tags("Public Avatar API", description, "/", csp_nonce),
+        meta_tags = render_meta_tags(
+            &i18n.t("hero.title", "Public Avatar API"),
+            &description,
+            "/",
+            csp_nonce,
+            i18n,
+        ),
         styles = shared_page_styles(),
+        html_lang = escape_html_attribute(i18n.html_lang()),
+        nav = render_nav_html(i18n),
+        hero_eyebrow = i18n.t_attr("hero.eyebrow", "hashavatar.app"),
+        hero_title = i18n.t_attr("hero.title", "Generate A Public Avatar In Seconds"),
+        hero_description = i18n.t_attr("hero.description", &description),
+        hero_privacy_tip = i18n.t_attr("hero.privacy_tip", "Privacy-conscious integration tip: email-shaped identifiers are accepted for convenience, but a stable internal id or one-way hash is better when you want less personal data in URL logs."),
+        identity_label = i18n.t_attr("form.identity", "Identity"),
+        tenant_label = i18n.t_attr("form.namespace_tenant", "Namespace Tenant"),
+        style_version_label = i18n.t_attr("form.style_version", "Style Version"),
+        avatar_type_label = i18n.t_attr("form.avatar_type", "Avatar Type"),
+        background_label = i18n.t_attr("form.background", "Background"),
+        accessory_label = i18n.t_attr("form.accessory", "Accessory"),
+        color_label = i18n.t_attr("form.accent_color", "Accent Color"),
+        expression_label = i18n.t_attr("form.expression", "Expression"),
+        shape_label = i18n.t_attr("form.shape", "Shape"),
+        size_label = i18n.t_attr("form.size", "Size"),
+        copy_url_label = i18n.t_attr("form.copy_url", "Copy URL"),
+        copy_signed_label = i18n.t_attr("form.copy_signed_link", "Copy Signed Link"),
+        download_label = i18n.t_attr("form.download", "Download"),
+        open_raw_label = i18n.t_attr("form.open_raw", "Open Raw"),
+        direct_url_label = i18n.t_attr("form.direct_url", "Direct URL"),
+        signed_storage_label = i18n.t_attr("form.signed_storage_link", "Signed Storage Link"),
+        signed_unavailable = i18n.t_attr("form.signed_unavailable", "Enable S3 configuration on the server to use signed links."),
+        machine_api_label = i18n.t_attr("form.machine_readable_api", "Machine-Readable API"),
+        api_label = i18n.t_attr("preview.api", "API"),
+        storage_label = i18n.t_attr("preview.storage", "Storage"),
+        storage_text = i18n.t_attr("preview.storage_text", "optional S3 persistence with presigned links via"),
+        cache_label = i18n.t_attr("preview.cache", "Cache"),
+        cache_text = i18n.t_attr("preview.cache_text", "Cloudflare-friendly long cache headers"),
+        tip_label = i18n.t_attr("preview.tip", "Tip"),
+        tip_text = i18n.t_attr("preview.tip_text", "Every URL is deterministic, so you can embed it directly in your app."),
+        preset_examples_label = i18n.t_attr("preview.presets", "Preset Examples"),
+        signed_unavailable_json = json_script_string(
+            &i18n.t("form.signed_unavailable_runtime", "Signed storage links are unavailable until S3 is configured on the server."),
+            "Signed storage links are unavailable until S3 is configured on the server.",
+        ),
+        preset_suffix_js = i18n.t_attr("preview.preset_suffix", "preset"),
+        copy_failed_json = json_script_string(&i18n.t("form.copy_failed", "Copy failed"), "Copy failed"),
+        copy_url_json = json_script_string(&i18n.t("form.copy_url", "Copy URL"), "Copy URL"),
+        copy_signed_json = json_script_string(
+            &i18n.t("form.copy_signed_link", "Copy Signed Link"),
+            "Copy Signed Link",
+        ),
+        copied_json = json_script_string(&i18n.t("form.copied", "Copied"), "Copied"),
         nonce = nonce,
-        footer = render_footer_html(),
-        repo = REPOSITORY_URL,
-        crate_url = CRATE_URL,
+        footer = render_footer_html(i18n, ""),
+        telemetry_script = telemetry_script,
     )
 }
 
-fn render_help_html(csp_nonce: &CspNonce) -> String {
-    render_page_html(
-        "Help",
-        "Integration guide for using the hashavatar.app avatar API in web apps, frontends, and backends.",
-        "/help",
-        "Integration Guide",
-        "Use hashavatar.app directly from the browser, your frontend, or your backend. Every avatar URL is deterministic, so the same identifier and options always produce the same result.",
-        &format!(
+fn render_help_html(csp_nonce: &CspNonce, telemetry_enabled: bool, i18n: I18n) -> String {
+    render_page_html(PageHtmlParams {
+        page_title: i18n.t("pages.help.title", "Help"),
+        description: i18n.t(
+            "pages.help.description",
+            "Integration guide for using the hashavatar.app avatar API in web apps, frontends, and backends.",
+        ),
+        path: "/help",
+        eyebrow: i18n.t("pages.help.eyebrow", "Integration Guide"),
+        lead: i18n.t(
+            "pages.help.lead",
+            "Use hashavatar.app directly from the browser, your frontend, or your backend. Every avatar URL is deterministic, so the same identifier and options always produce the same result.",
+        ),
+        body: format!(
             r#"
 <div class="content-grid">
   <section class="card">
-    <h2>Basic URL</h2>
-    <p>Use the query endpoint when you want a simple public image URL.</p>
+    <h2>{basic_url}</h2>
+    <p>{basic_url_text}</p>
     <pre><code>https://{site}/v1/avatar?id=robot@hashavatar.app&amp;algorithm=sha512&amp;kind=robot&amp;background=white&amp;accessory=glasses&amp;color=gold&amp;expression=happy&amp;shape=circle&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
-    <h2>Path Style URL</h2>
-    <p>Use the path form if you prefer cleaner embed URLs.</p>
+    <h2>{path_style}</h2>
+    <p>{path_style_text}</p>
     <pre><code>https://{site}/avatar/fox/fox@hashavatar.app/webp</code></pre>
   </section>
   <section class="card">
-    <h2>HTML Example</h2>
+    <h2>{html_example}</h2>
     <pre><code>&lt;img
   src="https://{site}/v1/avatar?id=monster@hashavatar.app&amp;algorithm=sha512&amp;kind=monster&amp;background=themed&amp;accessory=horns&amp;color=crimson&amp;expression=grumpy&amp;shape=hexagon&amp;format=webp&amp;size=256"
   alt="Generated monster avatar"
 /&gt;</code></pre>
   </section>
   <section class="card">
-    <h2>JavaScript Example</h2>
+    <h2>{javascript_example}</h2>
     <pre><code>const avatarUrl = new URL("https://{site}/v1/avatar");
 avatarUrl.search = new URLSearchParams({{
   id: user.email,
@@ -2820,7 +4132,7 @@ avatarUrl.search = new URLSearchParams({{
   </section>
 </div>
 <section class="card">
-  <h2>Supported Parameters</h2>
+  <h2>{supported_parameters}</h2>
   <ul>
     <li><code>id</code>: any stable identifier such as an email, username, internal user id, or one-way hash</li>
     <li><code>tenant</code>: optional namespace partition for multi-tenant apps</li>
@@ -2835,37 +4147,52 @@ avatarUrl.search = new URLSearchParams({{
     <li><code>format</code>: output format; only <code>webp</code> is supported</li>
     <li><code>size</code>: from <code>64</code> up to <code>1024</code></li>
   </ul>
-  <p>Accessory and expression layers apply to character-style families. Object-style families such as <code>planet</code>, <code>rocket</code>, <code>paws</code>, <code>mushroom</code>, <code>cactus</code>, <code>cupcake</code>, <code>pizza</code>, <code>icecream</code>, <code>diamond</code>, <code>coffee-cup</code>, and <code>shield</code> are normalized to <code>accessory=none</code> and <code>expression=default</code>.</p>
+  <p>{style_layer_note}</p>
 </section>
 <section class="card">
-  <h2>Signed Storage Links</h2>
-  <p>If this deployment has object storage configured, request a presigned storage link from <code>/v1/avatar/link</code>. That endpoint stores the generated object and returns JSON with the signed URL, object key, and a hashed cache key. Standard avatar responses do not expose signed-link metadata in response headers.</p>
+  <h2>{signed_storage_links}</h2>
+  <p>{signed_storage_links_text}</p>
   <pre><code>GET https://{site}/v1/avatar/link?id=robot@hashavatar.app&amp;algorithm=sha512&amp;kind=robot&amp;background=white&amp;accessory=glasses&amp;color=gold&amp;expression=happy&amp;shape=circle&amp;format=webp&amp;size=256</code></pre>
 </section>
 <section class="card">
-  <h2>Open Source</h2>
-  <p>The public site source lives in <a class="inline-link" href="{repo}" target="_blank" rel="noreferrer">the repository</a> and the reusable rendering crate is published on <a class="inline-link" href="{crate_url}" target="_blank" rel="noreferrer">crates.io</a>.</p>
+  <h2>{open_source}</h2>
+  <p>{open_source_text} <a class="inline-link" href="{repo}" target="_blank" rel="noreferrer">{repository}</a> · <a class="inline-link" href="{crate_url}" target="_blank" rel="noreferrer">crates.io</a></p>
 </section>
 "#,
             site = SITE_NAME,
             repo = REPOSITORY_URL,
             crate_url = CRATE_URL,
+            basic_url = i18n.t_attr("pages.help.basic_url", "Basic URL"),
+            basic_url_text = i18n.t_attr("pages.help.basic_url_text", "Use the query endpoint when you want a simple public image URL."),
+            path_style = i18n.t_attr("pages.help.path_style", "Path Style URL"),
+            path_style_text = i18n.t_attr("pages.help.path_style_text", "Use the path form if you prefer cleaner embed URLs."),
+            html_example = i18n.t_attr("pages.help.html_example", "HTML Example"),
+            javascript_example = i18n.t_attr("pages.help.javascript_example", "JavaScript Example"),
+            supported_parameters = i18n.t_attr("pages.help.supported_parameters", "Supported Parameters"),
+            style_layer_note = i18n.t_attr("pages.help.style_layer_note", "Accessory and expression layers apply to character-style families."),
+            signed_storage_links = i18n.t_attr("pages.help.signed_storage_links", "Signed Storage Links"),
+            signed_storage_links_text = i18n.t_attr("pages.help.signed_storage_links_text", "If this deployment has object storage configured, request a presigned storage link from /v1/avatar/link."),
+            open_source = i18n.t_attr("pages.help.open_source", "Open Source"),
+            open_source_text = i18n.t_attr("pages.help.open_source_text", "The public site source lives in the API repository and the reusable avatar renderer is published on crates.io."),
+            repository = i18n.t_attr("nav.repository", "Repository"),
         ),
         csp_nonce,
-    )
+        telemetry_enabled,
+        i18n,
+    })
 }
 
-fn render_docs_html(csp_nonce: &CspNonce) -> String {
-    render_page_html(
-        "Docs",
-        "Reference documentation for the hashavatar.app public avatar API, storage link endpoint, and namespace-aware identity contract.",
-        "/docs",
-        "API Reference",
-        "This is the product-facing reference for the public API. The same identity, tenant, style version, avatar family, style options, size, and WebP output are intended to remain stable within a major release.",
-        &format!(
+fn render_docs_html(csp_nonce: &CspNonce, telemetry_enabled: bool, i18n: I18n) -> String {
+    render_page_html(PageHtmlParams {
+        page_title: i18n.t("pages.docs.title", "Docs"),
+        description: i18n.t("pages.docs.description", "Reference documentation for the hashavatar.app public avatar API, storage link endpoint, and namespace-aware identity contract."),
+        path: "/docs",
+        eyebrow: i18n.t("pages.docs.eyebrow", "API Reference"),
+        lead: i18n.t("pages.docs.lead", "This is the product-facing reference for the public API. The same identity, tenant, style version, avatar family, style options, size, and WebP output are intended to remain stable within a major release."),
+        body: format!(
             r#"
 <section class="card">
-  <h2>Core Endpoints</h2>
+  <h2>{core_endpoints}</h2>
   <ul>
     <li><code>GET /v1/avatar</code>: returns an avatar asset directly</li>
     <li><code>GET /v1/avatar/link</code>: stores the generated avatar in configured object storage and returns signed-link metadata</li>
@@ -2874,116 +4201,175 @@ fn render_docs_html(csp_nonce: &CspNonce) -> String {
   </ul>
 </section>
 <section class="card">
-  <h2>Operational Endpoints</h2>
-  <p><code>GET /healthz</code> is public for load balancers and uptime checks. <code>GET /metrics</code> is loopback-only and returns <code>404</code> to non-local peers.</p>
+  <h2>{operational_endpoints}</h2>
+  <p>{operational_text}</p>
 </section>
 <div class="content-grid">
   <section class="card">
-    <h2>Namespace Support</h2>
-    <p>Use <code>tenant</code> and <code>style_version</code> to keep visual identity spaces separate between products or rollout phases.</p>
+    <h2>{namespace_support}</h2>
+    <p>{namespace_text}</p>
     <pre><code>GET https://{site}/v1/avatar?id=wizard@hashavatar.app&amp;tenant=acme&amp;style_version=v2&amp;algorithm=sha512&amp;kind=wizard&amp;background=white&amp;accessory=hat&amp;color=deep-sea-blue&amp;expression=cool&amp;shape=squircle&amp;format=webp&amp;size=256</code></pre>
   </section>
   <section class="card">
-    <h2>Anonymous IDs</h2>
-    <p>Send an internal stable id or a one-way application hash instead of raw personal data.</p>
+    <h2>{anonymous_ids}</h2>
+    <p>{anonymous_text}</p>
     <pre><code>printf '%s' 'user@example.com' | sha256sum | cut -d' ' -f1</code></pre>
   </section>
   <section class="card">
-    <h2>Rate Limits</h2>
-    <p>The public service applies origin-side rate limits, with stricter limits on <code>/v1/avatar/link</code>, direct avatar requests with <code>persist=true</code>, and <code>/og.png</code> because object storage writes and Open Graph image rendering are more expensive than direct rendering.</p>
+    <h2>{rate_limits}</h2>
+    <p>{rate_limits_text}</p>
   </section>
   <section class="card">
-    <h2>Timeouts</h2>
-    <p>Avatar generation and storage operations are bounded by server-side timeouts so expensive requests cannot monopolize the origin indefinitely.</p>
+    <h2>{timeouts}</h2>
+    <p>{timeouts_text}</p>
   </section>
 </div>
 <section class="card">
-  <h2>Errors</h2>
+  <h2>{errors}</h2>
   <ul>
-    <li><code>400</code>: invalid kind, unsupported algorithm or format, size, or missing identity</li>
-    <li><code>408</code>: generation or storage timeout</li>
-    <li><code>429</code>: rate limit exceeded</li>
-    <li><code>500</code>: rendering or storage failure</li>
+    <li><code>400</code>: {error_bad_request}</li>
+    <li><code>408</code>: {error_timeout}</li>
+    <li><code>429</code>: {error_rate_limit}</li>
+    <li><code>500</code>: {error_internal}</li>
   </ul>
 </section>
 <section class="card">
-  <h2>OpenAPI</h2>
-  <p>For generated clients or tooling, use <a class="inline-link" href="/docs/openapi.json">/docs/openapi.json</a>.</p>
+  <h2>{openapi}</h2>
+  <p>{openapi_text} <a class="inline-link" href="/docs/openapi.json">/docs/openapi.json</a>.</p>
 </section>
 "#,
             site = SITE_NAME,
+            core_endpoints = i18n.t_attr("pages.docs.core_endpoints", "Core Endpoints"),
+            operational_endpoints = i18n.t_attr("pages.docs.operational_endpoints", "Operational Endpoints"),
+            operational_text = i18n.t_attr("pages.docs.operational_text", "GET /healthz is public for load balancers and uptime checks. GET /metrics is loopback-only and returns 404 to non-local peers."),
+            namespace_support = i18n.t_attr("pages.docs.namespace_support", "Namespace Support"),
+            namespace_text = i18n.t_attr("pages.docs.namespace_text", "Use tenant and style_version to keep visual identity spaces separate between products or rollout phases."),
+            anonymous_ids = i18n.t_attr("pages.docs.anonymous_ids", "Anonymous IDs"),
+            anonymous_text = i18n.t_attr("pages.docs.anonymous_text", "Send an internal stable id or a one-way application hash instead of raw personal data."),
+            rate_limits = i18n.t_attr("pages.docs.rate_limits", "Rate Limits"),
+            rate_limits_text = i18n.t_attr("pages.docs.rate_limits_text", "The public service applies origin-side rate limits."),
+            timeouts = i18n.t_attr("pages.docs.timeouts", "Timeouts"),
+            timeouts_text = i18n.t_attr("pages.docs.timeouts_text", "Avatar generation and storage operations are bounded by server-side timeouts."),
+            errors = i18n.t_attr("pages.docs.errors", "Errors"),
+            error_bad_request = i18n.t_attr("pages.docs.error_bad_request", "invalid kind, unsupported algorithm or format, size, or missing identity"),
+            error_timeout = i18n.t_attr("pages.docs.error_timeout", "generation or storage timeout"),
+            error_rate_limit = i18n.t_attr("pages.docs.error_rate_limit", "rate limit exceeded"),
+            error_internal = i18n.t_attr("pages.docs.error_internal", "rendering or storage failure"),
+            openapi = i18n.t_attr("pages.docs.openapi", "OpenAPI"),
+            openapi_text = i18n.t_attr("pages.docs.openapi_text", "For generated clients or tooling, use"),
         ),
         csp_nonce,
-    )
+        telemetry_enabled,
+        i18n,
+    })
 }
 
-fn render_terms_html(csp_nonce: &CspNonce) -> String {
-    render_page_html(
-        "Terms",
-        "Best-effort service terms for the public hashavatar.app avatar API and demo website.",
-        "/terms",
-        "Service Terms",
-        "This public service is provided on an informational and best-effort basis. Use it only if that risk profile works for your application.",
-        r#"
+fn render_terms_html(csp_nonce: &CspNonce, telemetry_enabled: bool, i18n: I18n) -> String {
+    render_page_html(PageHtmlParams {
+        page_title: i18n.t("pages.terms.title", "Terms"),
+        description: i18n.t("pages.terms.description", "Best-effort service terms for the public hashavatar.app avatar API and demo website."),
+        path: "/terms",
+        eyebrow: i18n.t("pages.terms.eyebrow", "Service Terms"),
+        lead: i18n.t("pages.terms.lead", "This public service is provided on an informational and best-effort basis. Use it only if that risk profile works for your application."),
+        body: format!(r#"
 <section class="card">
-  <h2>No Warranty</h2>
-  <p>This service and all generated outputs are provided as-is and as-available, without warranties of any kind, whether express or implied. We do not promise availability, correctness, fitness for a particular purpose, uninterrupted operation, or compatibility with your systems.</p>
+  <h2>{no_warranty}</h2>
+  <p>{no_warranty_text}</p>
 </section>
 <section class="card">
-  <h2>No Liability</h2>
-  <p>We are not responsible for downtime, outages, degraded performance, broken links, cache behavior, lost data, corrupted objects, third-party provider failures, or any direct or indirect damages arising from your use of the service.</p>
-  <p>If you depend on these avatars in production, you should implement your own fallback behavior, caching strategy, and availability plan.</p>
+  <h2>{no_liability}</h2>
+  <p>{no_liability_text}</p>
+  <p>{fallback_text}</p>
 </section>
 <section class="card">
-  <h2>Acceptable Use</h2>
-  <p>Do not use the service to overload the infrastructure, bypass rate limits or cache controls, test abusive traffic patterns, or store illegal material through any persistence feature.</p>
+  <h2>{acceptable_use}</h2>
+  <p>{acceptable_use_text}</p>
 </section>
 <section class="card">
-  <h2>Changes</h2>
-  <p>We may change, limit, suspend, or discontinue the public service at any time and without notice. Public endpoints, output details, or operational limits may change as the service evolves.</p>
-  <p>This page is operational guidance, not legal advice. If you need formal legal terms for a business deployment, you should publish a reviewed version specific to your jurisdiction and operator entity.</p>
+  <h2>{changes}</h2>
+  <p>{changes_text}</p>
+  <p>{legal_note}</p>
 </section>
 "#,
+            no_warranty = i18n.t_attr("pages.terms.no_warranty", "No Warranty"),
+            no_warranty_text = i18n.t_attr("pages.terms.no_warranty_text", "This service and all generated outputs are provided as-is and as-available."),
+            no_liability = i18n.t_attr("pages.terms.no_liability", "No Liability"),
+            no_liability_text = i18n.t_attr("pages.terms.no_liability_text", "We are not responsible for downtime, outages, degraded performance, broken links, cache behavior, lost data, corrupted objects, third-party provider failures, or any direct or indirect damages arising from your use of the service."),
+            fallback_text = i18n.t_attr("pages.terms.fallback_text", "If you depend on these avatars in production, you should implement your own fallback behavior, caching strategy, and availability plan."),
+            acceptable_use = i18n.t_attr("pages.terms.acceptable_use", "Acceptable Use"),
+            acceptable_use_text = i18n.t_attr("pages.terms.acceptable_use_text", "Do not use the service to overload the infrastructure."),
+            changes = i18n.t_attr("pages.terms.changes", "Changes"),
+            changes_text = i18n.t_attr("pages.terms.changes_text", "We may change, limit, suspend, or discontinue the public service at any time and without notice."),
+            legal_note = i18n.t_attr("pages.terms.legal_note", "This page is operational guidance, not legal advice."),
+        ),
         csp_nonce,
-    )
+        telemetry_enabled,
+        i18n,
+    })
 }
 
-fn render_privacy_html(csp_nonce: &CspNonce) -> String {
-    render_page_html(
-        "Privacy",
-        "Privacy notice for hashavatar.app covering request data, logs, and optional object storage behavior.",
-        "/privacy",
-        "Privacy Notice",
-        "The service is intentionally simple, but a public avatar API still receives some request data in order to function. This page describes that practical baseline.",
-        r#"
+fn render_privacy_html(csp_nonce: &CspNonce, telemetry_enabled: bool, i18n: I18n) -> String {
+    render_page_html(PageHtmlParams {
+        page_title: i18n.t("pages.privacy.title", "Privacy"),
+        description: i18n.t("pages.privacy.description", "Privacy notice for hashavatar.app covering request data, logs, and optional object storage behavior."),
+        path: "/privacy",
+        eyebrow: i18n.t("pages.privacy.eyebrow", "Privacy Notice"),
+        lead: i18n.t("pages.privacy.lead", "The service is intentionally simple, but a public avatar API still receives some request data in order to function. This page describes that practical baseline."),
+        body: format!(r#"
 <section class="card">
-  <h2>What The Service Receives</h2>
+  <h2>{receives}</h2>
   <ul>
-    <li>the opaque identifier you put in the request, such as an internal id, username, or one-way hash</li>
-    <li>request parameters such as avatar type, style options, size, format, and background</li>
-    <li>standard HTTP metadata handled by the server, reverse proxy, and CDN, such as IP address, user agent, referrer, and request timing</li>
+    <li>{receives_identity}</li>
+    <li>{receives_parameters}</li>
+    <li>{receives_http_metadata}</li>
   </ul>
 </section>
 <section class="card">
-  <h2>What The App Itself Stores</h2>
-  <p>The application does not require user accounts and does not set application cookies by default. In the basic request flow it generates the avatar on demand and returns it directly.</p>
-  <p>If object storage support is enabled and a signed-link or persistence route is used, the generated avatar file and its object key may be stored in the configured S3-compatible bucket.</p>
+  <h2>{stores}</h2>
+  <p>{stores_text}</p>
+  <p>{storage_text}</p>
 </section>
 <section class="card">
-  <h2>Logging And Infrastructure</h2>
-  <p>Depending on deployment, infrastructure components such as nginx, Caddy, Cloudflare, hosting providers, or S3-compatible storage may keep access logs and operational metadata. Those logs are part of running a public service and may contain the identifier you requested if it appears in the URL.</p>
+  <h2>{telemetry}</h2>
+  <p>{telemetry_text}</p>
+  <p>{telemetry_limits}</p>
 </section>
 <section class="card">
-  <h2>What To Avoid Sending</h2>
-  <p>Email-shaped identifiers are accepted for compatibility, but URLs can appear in infrastructure logs. Send an internal stable id or a one-way application hash when you want to avoid putting personal data in the request URL.</p>
+  <h2>{logging}</h2>
+  <p>{logging_text}</p>
 </section>
 <section class="card">
-  <h2>Repository And Crate</h2>
-  <p>You can inspect the implementation in the public <a class="inline-link" href="https://github.com/valkyoth/hashavatar-api" target="_blank" rel="noreferrer">API repository</a> and the reusable avatar renderer in the <a class="inline-link" href="https://crates.io/crates/hashavatar/" target="_blank" rel="noreferrer">Rust crate</a>.</p>
+  <h2>{avoid}</h2>
+  <p>{avoid_text}</p>
+</section>
+<section class="card">
+  <h2>{repository}</h2>
+  <p>{repository_text} <a class="inline-link" href="https://github.com/valkyoth/hashavatar-api" target="_blank" rel="noreferrer">{repo_label}</a> · <a class="inline-link" href="https://crates.io/crates/hashavatar/" target="_blank" rel="noreferrer">{crate_label}</a></p>
 </section>
 "#,
+            receives = i18n.t_attr("pages.privacy.receives", "What The Service Receives"),
+            receives_identity = i18n.t_attr("pages.privacy.receives_identity", "the opaque identifier you put in the request, such as an internal id, username, or one-way hash"),
+            receives_parameters = i18n.t_attr("pages.privacy.receives_parameters", "request parameters such as avatar type, style options, size, format, and background"),
+            receives_http_metadata = i18n.t_attr("pages.privacy.receives_http_metadata", "standard HTTP metadata handled by the server, reverse proxy, and CDN, such as IP address, user agent, referrer, and request timing"),
+            stores = i18n.t_attr("pages.privacy.stores", "What The App Itself Stores"),
+            stores_text = i18n.t_attr("pages.privacy.stores_text", "The application does not require user accounts and does not set application cookies by default."),
+            storage_text = i18n.t_attr("pages.privacy.storage_text", "If object storage support is enabled and a signed-link or persistence route is used, the generated avatar file and its object key may be stored in the configured S3-compatible bucket."),
+            telemetry = i18n.t_attr("pages.privacy.telemetry", "Privacy-Preserving Telemetry"),
+            telemetry_text = i18n.t_attr("pages.privacy.telemetry_text", "If telemetry is enabled by the operator, the app emits aggregate OpenTelemetry metrics."),
+            telemetry_limits = i18n.t_attr("pages.privacy.telemetry_limits", "Telemetry does not include raw identifiers, tenant or style namespace values, IP addresses, user agents, referrers, full URLs, cookies, or free-form text."),
+            logging = i18n.t_attr("pages.privacy.logging", "Logging And Infrastructure"),
+            logging_text = i18n.t_attr("pages.privacy.logging_text", "Depending on deployment, infrastructure components may keep access logs and operational metadata."),
+            avoid = i18n.t_attr("pages.privacy.avoid", "What To Avoid Sending"),
+            avoid_text = i18n.t_attr("pages.privacy.avoid_text", "Email-shaped identifiers are accepted for compatibility, but URLs can appear in infrastructure logs."),
+            repository = i18n.t_attr("pages.privacy.repository", "Repository And Crate"),
+            repository_text = i18n.t_attr("pages.privacy.repository_text", "You can inspect the implementation in the public API repository and the reusable avatar renderer in the Rust crate."),
+            repo_label = i18n.t_attr("nav.repository", "Repository"),
+            crate_label = i18n.t_attr("nav.rust_crate", "Rust Crate"),
+        ),
         csp_nonce,
-    )
+        telemetry_enabled,
+        i18n,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -3476,6 +4862,7 @@ mod tests {
             trusted_proxies: TrustedProxies::default(),
             rate_limiter: RateLimiter::with_capacity(8),
             metrics: Metrics::default(),
+            observability: Observability::disabled(),
         };
         let headers = HeaderMap::new();
         let peer_ip = IpAddr::from([203, 0, 113, 10]);
@@ -3605,6 +4992,89 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn otlp_runtime_switch_accepts_enabled_disabled_values() {
+        assert!(otlp_enabled_from_vars(|name| {
+            (name == "HASHAVATAR_OTLP").then(|| "enabled".to_string())
+        }));
+        assert!(otlp_enabled_from_vars(|name| {
+            (name == "HASHAVATAR_OTEL_ENABLED").then(|| "true".to_string())
+        }));
+        assert!(!otlp_enabled_from_vars(|name| {
+            (name == "HASHAVATAR_OTLP_ENABLED").then(|| "disabled".to_string())
+        }));
+        assert!(!otlp_enabled_from_vars(|_| None));
+    }
+
+    #[test]
+    fn visible_page_events_are_allow_listed_and_clamped() {
+        let event = Observability::validate_visible_event(VisiblePageEvent {
+            route: "/".to_string(),
+            section: "home",
+            seconds: MAX_VISIBLE_SECONDS + 1,
+        })
+        .expect("home visible event should be accepted");
+
+        assert_eq!(event.seconds, MAX_VISIBLE_SECONDS);
+        assert!(
+            Observability::validate_visible_event(VisiblePageEvent {
+                route: "/v1/avatar".to_string(),
+                section: "avatar",
+                seconds: 10,
+            })
+            .is_none()
+        );
+        assert_eq!(visible_section_from_str("docs"), Some("docs"));
+        assert_eq!(visible_section_from_str("unknown"), None);
+        assert!(is_allowed_locale_id("en-EU"));
+        assert!(is_allowed_locale_id("de-DE"));
+        assert!(is_allowed_locale_id("es-ES"));
+        assert!(is_allowed_locale_id("it-IT"));
+        assert!(!is_allowed_locale_id("pl-PL"));
+    }
+
+    #[test]
+    fn telemetry_events_use_bounded_allow_listed_labels() {
+        assert!(is_allowed_click("github", "repository"));
+        assert!(is_allowed_click("outbound", "crate"));
+        assert!(is_allowed_click("action", "copy-url"));
+        assert!(!is_allowed_click(
+            "github",
+            "https://github.com/valkyoth/hashavatar-api"
+        ));
+        assert!(!is_allowed_click("action", "custom-user-input"));
+
+        let style = avatar_telemetry_style_from_payload(&AvatarGenerateTelemetryPayload {
+            locale: "en-EU".to_string(),
+            kind: "paws".to_string(),
+            background: "themed".to_string(),
+            accessory: "glasses".to_string(),
+            color: "gold".to_string(),
+            expression: "happy".to_string(),
+            shape: "circle".to_string(),
+            size: 256,
+        })
+        .expect("bounded style telemetry payload should parse");
+
+        assert_eq!(style.kind, AvatarKind::Paws);
+        assert_eq!(style.accessory, DEFAULT_ACCESSORY);
+        assert_eq!(style.expression, DEFAULT_EXPRESSION);
+        assert_eq!(style.size_bucket, "256-511");
+        assert!(
+            avatar_telemetry_style_from_payload(&AvatarGenerateTelemetryPayload {
+                locale: "en-EU".to_string(),
+                kind: "<script>".to_string(),
+                background: "themed".to_string(),
+                accessory: "none".to_string(),
+                color: "default".to_string(),
+                expression: "default".to_string(),
+                shape: "square".to_string(),
+                size: 256,
+            })
+            .is_err()
+        );
+    }
+
     #[tokio::test]
     async fn healthz_only_exposes_liveness() {
         let response = healthz().await.into_response();
@@ -3656,10 +5126,62 @@ mod tests {
     fn non_html_routes_use_static_csp_without_nonce() {
         assert!(route_uses_inline_html("/"));
         assert!(route_uses_inline_html("/docs"));
+        assert!(route_uses_inline_html("/de/docs"));
+        assert!(route_uses_inline_html("/fr/privacy"));
         assert!(!route_uses_inline_html("/v1/avatar"));
         assert!(!route_uses_inline_html("/og.png"));
         assert!(!static_content_security_policy().contains("nonce-"));
         assert!(static_content_security_policy().contains("script-src 'self'"));
+    }
+
+    #[test]
+    fn locale_config_loads_requested_languages() {
+        assert_eq!(default_locale().locale_id, "en-EU");
+        assert_eq!(locales().len(), 32);
+        assert_eq!(locale_by_prefix("en-gb").unwrap().locale_id, "en-GB");
+        assert_eq!(locale_by_prefix("en-us").unwrap().locale_id, "en-US");
+        assert_eq!(locale_by_prefix("fr").unwrap().display_name, "Français");
+        assert_eq!(locale_by_prefix("de").unwrap().display_name, "Deutsch");
+        assert_eq!(locale_by_prefix("sv").unwrap().display_name, "Svenska");
+        assert_eq!(locale_by_prefix("no").unwrap().display_name, "Norsk");
+        assert_eq!(locale_by_prefix("nl").unwrap().display_name, "Nederlands");
+        assert_eq!(locale_by_prefix("fi").unwrap().display_name, "Suomi");
+        assert_eq!(locale_by_prefix("is").unwrap().display_name, "Íslenska");
+        assert_eq!(locale_by_prefix("es").unwrap().display_name, "Español");
+        assert_eq!(locale_by_prefix("pt").unwrap().display_name, "Português");
+        assert_eq!(locale_by_prefix("it").unwrap().display_name, "Italiano");
+        assert_eq!(locale_by_prefix("ja").unwrap().display_name, "日本語");
+        assert_eq!(locale_by_prefix("zh").unwrap().display_name, "简体中文");
+        assert_eq!(locale_by_prefix("zh-tw").unwrap().display_name, "繁體中文");
+        assert_eq!(locale_by_prefix("vi").unwrap().display_name, "Tiếng Việt");
+        assert_eq!(locale_by_prefix("th").unwrap().display_name, "ไทย");
+        assert_eq!(locale_by_prefix("hi").unwrap().display_name, "हिन्दी");
+        assert_eq!(locale_by_prefix("bn").unwrap().display_name, "বাংলা");
+        assert_eq!(locale_by_prefix("ta").unwrap().display_name, "தமிழ்");
+        assert_eq!(locale_by_prefix("eo").unwrap().display_name, "Esperanto");
+        assert_eq!(locale_by_prefix("da").unwrap().display_name, "Dansk");
+        assert_eq!(locale_by_prefix("la").unwrap().display_name, "Latina");
+        assert_eq!(
+            locale_by_prefix("gsw").unwrap().display_name,
+            "Schwiizerdütsch"
+        );
+        assert_eq!(locale_by_prefix("ko").unwrap().display_name, "한국어");
+        assert_eq!(locale_by_prefix("ru").unwrap().display_name, "Русский");
+        assert_eq!(locale_by_prefix("uk").unwrap().display_name, "Українська");
+        assert_eq!(locale_by_prefix("vlaams").unwrap().display_name, "Vlaams");
+        assert_eq!(
+            locale_by_prefix("fr-be").unwrap().display_name,
+            "Français (Belgique)"
+        );
+        assert_eq!(
+            locale_by_prefix("fr-ca").unwrap().display_name,
+            "Français (Canada)"
+        );
+        assert_eq!(
+            locale_by_prefix("en-ca").unwrap().display_name,
+            "English (Canada)"
+        );
+        assert!(locale_by_prefix("pl").is_none());
     }
 
     #[test]
@@ -3773,17 +5295,90 @@ mod tests {
     #[test]
     fn rendered_index_applies_csp_nonce_to_inline_blocks() {
         let nonce = CspNonce("testnonce".to_string());
-        let html = render_index_html(&nonce, false);
+        let html = render_index_html(&nonce, false, true, i18n(default_locale()));
 
         assert!(html.contains(r#"<style nonce="testnonce">"#));
         assert!(html.contains(r#"<script nonce="testnonce">"#));
         assert!(html.contains(r#"<script nonce="testnonce" type="application/ld+json">"#));
+        assert!(html.contains("window.hashavatarTelemetry"));
+        assert!(html.contains("/telemetry/page-visible"));
+        assert!(html.contains("/telemetry/avatar-generate"));
+        assert!(html.contains("window.hashavatarTelemetry?.avatar({"));
+        assert!(html.contains(r#"kind: kindEl.value"#));
+        assert!(!html.contains("window.hashavatarTelemetry?.avatar({\n        id:"));
+    }
+
+    #[test]
+    fn rendered_index_omits_telemetry_script_when_disabled() {
+        let nonce = CspNonce("testnonce".to_string());
+        let html = render_index_html(&nonce, false, false, i18n(default_locale()));
+
+        assert!(!html.contains("window.hashavatarTelemetry ="));
+        assert!(!html.contains("/telemetry/page-visible"));
+        assert!(!html.contains("/telemetry/avatar-generate"));
+    }
+
+    #[test]
+    fn language_switcher_links_same_page_without_touching_avatar_urls() {
+        let nonce = CspNonce("testnonce".to_string());
+        let german = i18n(locale_by_id("de-DE").expect("German locale"));
+        let html = render_index_html(&nonce, false, false, german);
+
+        assert!(html.contains(r#"<html lang="de-DE">"#));
+        assert!(html.contains("Öffentliche Avatare in Sekunden erzeugen"));
+        assert!(html.contains(r#"<details class="language-switcher">"#));
+        assert!(html.contains(r#"<a href="/">🇪🇺 English (EU)</a>"#));
+        assert!(html.contains(r#"<a href="/en-gb/">🇬🇧 English (UK)</a>"#));
+        assert!(html.contains(r#"<a href="/en-us/">🇺🇸 English (US)</a>"#));
+        assert!(html.contains(r#"<a href="/fr/">🇫🇷 Français</a>"#));
+        assert!(html.contains(r#"<a href="/de/" aria-current="true">🇩🇪 Deutsch</a>"#));
+        assert!(html.contains(r#"<a href="/sv/">🇸🇪 Svenska</a>"#));
+        assert!(html.contains(r#"<a href="/no/">🇳🇴 Norsk</a>"#));
+        assert!(html.contains(r#"<a href="/nl/">🇳🇱 Nederlands</a>"#));
+        assert!(html.contains(r#"<a href="/fi/">🇫🇮 Suomi</a>"#));
+        assert!(html.contains(r#"<a href="/is/">🇮🇸 Íslenska</a>"#));
+        assert!(html.contains(r#"<a href="/es/">🇪🇸 Español</a>"#));
+        assert!(html.contains(r#"<a href="/pt/">🇵🇹 Português</a>"#));
+        assert!(html.contains(r#"<a href="/it/">🇮🇹 Italiano</a>"#));
+        assert!(html.contains(r#"<a href="/ja/">🇯🇵 日本語</a>"#));
+        assert!(html.contains(r#"<a href="/zh/">🇨🇳 简体中文</a>"#));
+        assert!(html.contains(r#"<a href="/zh-tw/">🇹🇼 繁體中文</a>"#));
+        assert!(html.contains(r#"<a href="/vi/">🇻🇳 Tiếng Việt</a>"#));
+        assert!(html.contains(r#"<a href="/th/">🇹🇭 ไทย</a>"#));
+        assert!(html.contains(r#"<a href="/hi/">🇮🇳 हिन्दी</a>"#));
+        assert!(html.contains(r#"<a href="/bn/">🇮🇳 বাংলা</a>"#));
+        assert!(html.contains(r#"<a href="/ta/">🇮🇳 தமிழ்</a>"#));
+        assert!(html.contains(r#"<a href="/eo/">🌐 Esperanto</a>"#));
+        assert!(html.contains(r#"<a href="/da/">🇩🇰 Dansk</a>"#));
+        assert!(html.contains(r#"<a href="/la/">🇻🇦 Latina</a>"#));
+        assert!(html.contains(r#"<a href="/gsw/">🇨🇭 Schwiizerdütsch</a>"#));
+        assert!(html.contains(r#"<a href="/ko/">🇰🇷 한국어</a>"#));
+        assert!(html.contains(r#"<a href="/ru/">🇷🇺 Русский</a>"#));
+        assert!(html.contains(r#"<a href="/uk/">🇺🇦 Українська</a>"#));
+        assert!(html.contains(r#"<a href="/vlaams/">🇧🇪 Vlaams</a>"#));
+        assert!(html.contains(r#"<a href="/fr-be/">🇧🇪 Français (Belgique)</a>"#));
+        assert!(html.contains(r#"<a href="/fr-ca/">🇨🇦 Français (Canada)</a>"#));
+        assert!(html.contains(r#"<a href="/en-ca/">🇨🇦 English (Canada)</a>"#));
+        assert!(html.contains("/v1/avatar?id=cat@hashavatar.app"));
+        assert!(!html.contains("/de/v1/avatar"));
+    }
+
+    #[test]
+    fn privacy_page_documents_aggregate_telemetry_limits() {
+        let nonce = CspNonce("testnonce".to_string());
+        let html = render_privacy_html(&nonce, false, i18n(default_locale()));
+
+        assert!(html.contains("Privacy-Preserving Telemetry"));
+        assert!(html.contains("aggregate OpenTelemetry metrics"));
+        assert!(html.contains("does not include raw identifiers"));
+        assert!(html.contains("IP addresses"));
+        assert!(html.contains("full URLs"));
     }
 
     #[test]
     fn rendered_index_disables_signed_link_fetches_without_storage() {
         let nonce = CspNonce("testnonce".to_string());
-        let html = render_index_html(&nonce, false);
+        let html = render_index_html(&nonce, false, false, i18n(default_locale()));
 
         assert!(html.contains("const storageLinksEnabled = false;"));
         assert!(
@@ -3794,7 +5389,7 @@ mod tests {
     #[test]
     fn rendered_index_enables_signed_link_fetches_with_storage() {
         let nonce = CspNonce("testnonce".to_string());
-        let html = render_index_html(&nonce, true);
+        let html = render_index_html(&nonce, true, false, i18n(default_locale()));
 
         assert!(html.contains("const storageLinksEnabled = true;"));
         assert!(
@@ -3805,7 +5400,7 @@ mod tests {
     #[test]
     fn rendered_index_exposes_avatar_style_controls() {
         let nonce = CspNonce("testnonce".to_string());
-        let html = render_index_html(&nonce, false);
+        let html = render_index_html(&nonce, false, false, i18n(default_locale()));
 
         assert!(html.contains(r#"<select id="accessory">"#));
         assert!(html.contains(r#"<select id="color">"#));
@@ -3847,7 +5442,7 @@ mod tests {
         assert!(!html.contains(r#"id="format""#));
         assert!(html.contains(r#"algorithm: "sha512""#));
         assert!(html.contains(r#"format: "webp""#));
-        assert!(!html.contains("id: preset.id"));
+        assert!(html.contains("id: preset.id"));
         assert!(html.contains(r#"el.addEventListener("input", scheduleFullRefresh);"#));
         assert!(html.contains("refreshNowWithPresets();"));
         assert!(!html.contains(r#"el.addEventListener("input", renderPresetPage);"#));
@@ -3856,13 +5451,13 @@ mod tests {
     #[test]
     fn public_docs_do_not_advertise_metrics_as_public_api() {
         let nonce = CspNonce("testnonce".to_string());
-        let index_html = render_index_html(&nonce, false);
-        let docs_html = render_docs_html(&nonce);
+        let index_html = render_index_html(&nonce, false, false, i18n(default_locale()));
+        let docs_html = render_docs_html(&nonce, false, i18n(default_locale()));
         let openapi = openapi_document();
 
         assert!(!index_html.contains(r#"href="/metrics""#));
         assert!(docs_html.contains("loopback-only"));
-        assert!(docs_html.contains("returns <code>404</code> to non-local peers"));
+        assert!(docs_html.contains("returns 404 to non-local peers"));
         assert!(openapi["paths"].get("/metrics").is_none());
     }
 
@@ -4052,6 +5647,7 @@ mod tests {
             trusted_proxies: TrustedProxies::default(),
             rate_limiter: RateLimiter::with_capacity(8),
             metrics: Metrics::default(),
+            observability: Observability::disabled(),
         };
         let response = og_png(
             State(state),
@@ -4081,6 +5677,7 @@ mod tests {
             trusted_proxies: TrustedProxies::default(),
             rate_limiter: RateLimiter::with_capacity(8),
             metrics: Metrics::default(),
+            observability: Observability::disabled(),
         };
         let response = og_png(
             State(state),
@@ -4107,6 +5704,7 @@ mod tests {
             trusted_proxies: TrustedProxies::default(),
             rate_limiter: RateLimiter::with_capacity(64),
             metrics: Metrics::default(),
+            observability: Observability::disabled(),
         };
         let headers = HeaderMap::new();
         let peer_addr: SocketAddr = "127.0.0.1:8080".parse().expect("peer address");
@@ -4193,7 +5791,7 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_webp_with_hashavatar_1_0_3() {
+    fn build_avatar_asset_renders_webp_with_hashavatar_1_1_0() {
         let request = test_avatar_request(AvatarRequestFormat::Webp);
         let asset = build_avatar_asset(&request).expect("webp avatar should render");
 

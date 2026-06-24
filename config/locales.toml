@@ -1,0 +1,225 @@
+default_locale = "en-EU"
+
+[[locales]]
+locale_id = "en-EU"
+html_lang = "en"
+url_prefix = "en-eu"
+display_name = "English (EU)"
+flag = "🇪🇺"
+
+[[locales]]
+locale_id = "en-GB"
+html_lang = "en-GB"
+url_prefix = "en-gb"
+display_name = "English (UK)"
+flag = "🇬🇧"
+
+[[locales]]
+locale_id = "en-US"
+html_lang = "en-US"
+url_prefix = "en-us"
+display_name = "English (US)"
+flag = "🇺🇸"
+
+[[locales]]
+locale_id = "fr-FR"
+html_lang = "fr-FR"
+url_prefix = "fr"
+display_name = "Français"
+flag = "🇫🇷"
+
+[[locales]]
+locale_id = "de-DE"
+html_lang = "de-DE"
+url_prefix = "de"
+display_name = "Deutsch"
+flag = "🇩🇪"
+
+[[locales]]
+locale_id = "sv-SE"
+html_lang = "sv-SE"
+url_prefix = "sv"
+display_name = "Svenska"
+flag = "🇸🇪"
+
+[[locales]]
+locale_id = "nb-NO"
+html_lang = "nb-NO"
+url_prefix = "no"
+display_name = "Norsk"
+flag = "🇳🇴"
+
+[[locales]]
+locale_id = "nl-NL"
+html_lang = "nl-NL"
+url_prefix = "nl"
+display_name = "Nederlands"
+flag = "🇳🇱"
+
+[[locales]]
+locale_id = "fi-FI"
+html_lang = "fi-FI"
+url_prefix = "fi"
+display_name = "Suomi"
+flag = "🇫🇮"
+
+[[locales]]
+locale_id = "is-IS"
+html_lang = "is-IS"
+url_prefix = "is"
+display_name = "Íslenska"
+flag = "🇮🇸"
+
+[[locales]]
+locale_id = "es-ES"
+html_lang = "es-ES"
+url_prefix = "es"
+display_name = "Español"
+flag = "🇪🇸"
+
+[[locales]]
+locale_id = "pt-PT"
+html_lang = "pt-PT"
+url_prefix = "pt"
+display_name = "Português"
+flag = "🇵🇹"
+
+[[locales]]
+locale_id = "it-IT"
+html_lang = "it-IT"
+url_prefix = "it"
+display_name = "Italiano"
+flag = "🇮🇹"
+
+[[locales]]
+locale_id = "ja-JP"
+html_lang = "ja-JP"
+url_prefix = "ja"
+display_name = "日本語"
+flag = "🇯🇵"
+
+[[locales]]
+locale_id = "zh-CN"
+html_lang = "zh-CN"
+url_prefix = "zh"
+display_name = "简体中文"
+flag = "🇨🇳"
+
+[[locales]]
+locale_id = "zh-TW"
+html_lang = "zh-TW"
+url_prefix = "zh-tw"
+display_name = "繁體中文"
+flag = "🇹🇼"
+
+[[locales]]
+locale_id = "vi-VN"
+html_lang = "vi-VN"
+url_prefix = "vi"
+display_name = "Tiếng Việt"
+flag = "🇻🇳"
+
+[[locales]]
+locale_id = "th-TH"
+html_lang = "th-TH"
+url_prefix = "th"
+display_name = "ไทย"
+flag = "🇹🇭"
+
+[[locales]]
+locale_id = "hi-IN"
+html_lang = "hi-IN"
+url_prefix = "hi"
+display_name = "हिन्दी"
+flag = "🇮🇳"
+
+[[locales]]
+locale_id = "bn-IN"
+html_lang = "bn-IN"
+url_prefix = "bn"
+display_name = "বাংলা"
+flag = "🇮🇳"
+
+[[locales]]
+locale_id = "ta-IN"
+html_lang = "ta-IN"
+url_prefix = "ta"
+display_name = "தமிழ்"
+flag = "🇮🇳"
+
+[[locales]]
+locale_id = "eo-001"
+html_lang = "eo"
+url_prefix = "eo"
+display_name = "Esperanto"
+flag = "🌐"
+
+[[locales]]
+locale_id = "da-DK"
+html_lang = "da-DK"
+url_prefix = "da"
+display_name = "Dansk"
+flag = "🇩🇰"
+
+[[locales]]
+locale_id = "la-VA"
+html_lang = "la"
+url_prefix = "la"
+display_name = "Latina"
+flag = "🇻🇦"
+
+[[locales]]
+locale_id = "gsw-CH"
+html_lang = "gsw-CH"
+url_prefix = "gsw"
+display_name = "Schwiizerdütsch"
+flag = "🇨🇭"
+
+[[locales]]
+locale_id = "ko-KR"
+html_lang = "ko-KR"
+url_prefix = "ko"
+display_name = "한국어"
+flag = "🇰🇷"
+
+[[locales]]
+locale_id = "ru-RU"
+html_lang = "ru-RU"
+url_prefix = "ru"
+display_name = "Русский"
+flag = "🇷🇺"
+
+[[locales]]
+locale_id = "uk-UA"
+html_lang = "uk-UA"
+url_prefix = "uk"
+display_name = "Українська"
+flag = "🇺🇦"
+
+[[locales]]
+locale_id = "nl-BE"
+html_lang = "nl-BE"
+url_prefix = "vlaams"
+display_name = "Vlaams"
+flag = "🇧🇪"
+
+[[locales]]
+locale_id = "fr-BE"
+html_lang = "fr-BE"
+url_prefix = "fr-be"
+display_name = "Français (Belgique)"
+flag = "🇧🇪"
+
+[[locales]]
+locale_id = "fr-CA"
+html_lang = "fr-CA"
+url_prefix = "fr-ca"
+display_name = "Français (Canada)"
+flag = "🇨🇦"
+
+[[locales]]
+locale_id = "en-CA"
+html_lang = "en-CA"
+url_prefix = "en-ca"
+display_name = "English (Canada)"
+flag = "🇨🇦"

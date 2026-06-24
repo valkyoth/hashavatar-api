@@ -25,7 +25,7 @@ Implemented now:
 - Namespace-aware tenant and style-version parameters.
 - SHA-512 identity hashing.
 - WebP avatar responses.
-- Avatar families from `hashavatar 1.0.3`: `cat`, `dog`, `robot`, `fox`,
+- Avatar families from `hashavatar 1.1.0`: `cat`, `dog`, `robot`, `fox`,
   `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`,
   `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`,
   `pizza`, `icecream`, `octopus`, `knight`, `bear`, `penguin`, `dragon`,
@@ -39,6 +39,12 @@ Implemented now:
 - Security headers on all responses.
 - Wolfi-based container runtime.
 - Fluxheim deployment example.
+- TOML-backed website translations for English (EU), English (UK),
+  English (US), French, German, Swedish, Norwegian, Dutch, Finnish,
+  Icelandic, Spanish, Portuguese, Italian, Japanese, Simplified Chinese,
+  Traditional Chinese, Vietnamese, Thai, Hindi, Bengali, Tamil, Esperanto,
+  Danish, Latin, Swiss German, Korean, Russian, Ukrainian, Flemish, Belgian
+  French, Canadian French, and Canadian English.
 - Local gates for formatting, clippy, tests, security invariants, dependency
   policy, RustSec advisories, local smoke testing, SBOM generation, and
   reproducible release builds.
@@ -57,7 +63,7 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Service license | `EUPL-1.2` |
-| Renderer crate | `hashavatar 1.0.3` |
+| Renderer crate | local `hashavatar 1.1.0` |
 | MSRV | Rust `1.96.0` |
 | Runtime container | Wolfi |
 | HTTP framework | `axum` |
@@ -213,6 +219,13 @@ General:
 - `PUBLIC_WEBSITE_HOST`
 - `HASHAVATAR_TRUSTED_PROXIES`
 
+Privacy-preserving OpenTelemetry metrics:
+
+- `HASHAVATAR_OTLP` set to `enabled` to export OTLP metrics; defaults to
+  disabled
+- `HASHAVATAR_OTLP_ENDPOINT` for the OTLP metrics endpoint, for example
+  `http://otel-collector:4318/v1/metrics`
+
 Object storage:
 
 - `HASHAVATAR_S3_BUCKET`
@@ -231,6 +244,55 @@ is intentionally sized for the real client IP space of the deployment.
 Do not proxy `/metrics` from a public listener. The endpoint is intended for
 local scraping only; a same-host reverse proxy can make the loopback peer check
 pass if it forwards the route.
+
+When OpenTelemetry is enabled, the application exports aggregate counters and
+histograms for requests, page views, visible page time, outbound clicks, demo
+actions, and avatar generations by bounded style choices. It does not attach
+raw identities, tenant names, URLs, referrers, user agents, cookies, or IP
+addresses as metric attributes.
+
+## Website Languages
+
+English (EU) is the default website language and renders at the root paths. The
+other website locales use stable prefixes:
+
+- `/en-gb/` for English (UK)
+- `/en-us/` for English (US)
+- `/fr/` for French
+- `/de/` for German
+- `/sv/` for Swedish
+- `/no/` for Norwegian
+- `/nl/` for Dutch
+- `/fi/` for Finnish
+- `/is/` for Icelandic
+- `/es/` for Spanish
+- `/pt/` for Portuguese
+- `/it/` for Italian
+- `/ja/` for Japanese
+- `/zh/` for Chinese (Simplified)
+- `/zh-tw/` for Chinese (Traditional)
+- `/vi/` for Vietnamese
+- `/th/` for Thai
+- `/hi/` for Hindi
+- `/bn/` for Bengali
+- `/ta/` for Tamil
+- `/eo/` for Esperanto
+- `/da/` for Danish
+- `/la/` for Latin
+- `/gsw/` for Swiss German
+- `/ko/` for Korean
+- `/ru/` for Russian
+- `/uk/` for Ukrainian
+- `/vlaams/` for Flemish
+- `/fr-be/` for Belgian French
+- `/fr-ca/` for Canadian French
+- `/en-ca/` for Canadian English
+
+Locale configuration lives in [config/locales.toml](config/locales.toml), and
+translated website keys live in [config/i18n/keys](config/i18n/keys). The
+language menu uses normal links and does not set cookies. Locale selection only
+changes website text, navigation, and telemetry locale labels; avatar API URLs,
+identity values, and rendering parameters stay unchanged.
 
 ## Testing And Release Evidence
 

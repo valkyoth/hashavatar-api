@@ -335,3 +335,77 @@ html_lang = "sr-RS"
 url_prefix = "sr"
 display_name = "Српски"
 flag = "🇷🇸"
+
+[[locales]]
+locale_id = "nap-IT"
+html_lang = "nap-IT"
+url_prefix = "nap"
+display_name = "Napulitano"
+flag = "🇮🇹"
+
+[[locales]]
+locale_id = "sk-SK"
+html_lang = "sk-SK"
+url_prefix = "sk"
+display_name = "Slovenčina"
+flag = "🇸🇰"
+
+[[locales]]
+locale_id = "sl-SI"
+html_lang = "sl-SI"
+url_prefix = "sl"
+display_name = "Slovenščina"
+flag = "🇸🇮"
+
+[[locales]]
+locale_id = "fy-NL"
+html_lang = "fy-NL"
+url_prefix = "fy"
+display_name = "Frysk"
+flag = "🇳🇱"
+
+[[locales]]
+locale_id = "se-NO"
+html_lang = "se-NO"
+url_prefix = "se"
+display_name = "Davvisámegiella"
+flag = "🇳🇴"
+
+[[locales]]
+locale_id = "scn-IT"
+html_lang = "scn-IT"
+url_prefix = "scn"
+display_name = "Sicilianu"
+flag = "🇮🇹"
+
+[[locales]]
+locale_id = "ar-001"
+html_lang = "ar"
+dir = "rtl"
+url_prefix = "ar"
+display_name = "العربية الفصحى"
+flag = "🌐"
+
+[[locales]]
+locale_id = "ar-AE"
+html_lang = "ar-AE"
+dir = "rtl"
+url_prefix = "ar-ae"
+display_name = "العربية الإماراتية"
+flag = "🇦🇪"
+
+[[locales]]
+locale_id = "ar-EG"
+html_lang = "ar-EG"
+dir = "rtl"
+url_prefix = "ar-eg"
+display_name = "العربية المصرية"
+flag = "🇪🇬"
+
+[[locales]]
+locale_id = "ar-SA"
+html_lang = "ar-SA"
+dir = "rtl"
+url_prefix = "ar-sa"
+display_name = "العربية السعودية"
+flag = "🇸🇦"

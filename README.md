@@ -46,7 +46,9 @@ Implemented now:
   Danish, Latin, Swiss German, Korean, Russian, Ukrainian, Flemish, Belgian
   French, Canadian French, Canadian English, Turkish, Lithuanian, Latvian,
   Polish, Greek, Hungarian, Estonian, Elfdalian, Bulgarian, Czech, Croatian,
-  Belarusian, Irish, Luxembourgish, Romanian, and Serbian.
+  Belarusian, Irish, Luxembourgish, Romanian, Serbian, Neapolitan, Slovak,
+  Slovene, West Frisian, Northern Sami, Sicilian, Modern Standard Arabic,
+  Emirati Arabic, Egyptian Arabic, and Saudi Arabic.
 - Local gates for formatting, clippy, tests, security invariants, dependency
   policy, RustSec advisories, local smoke testing, SBOM generation, and
   reproducible release builds.
@@ -305,6 +307,16 @@ other website locales use stable prefixes:
 - `/lb/` for Luxembourgish
 - `/ro/` for Romanian
 - `/sr/` for Serbian
+- `/nap/` for Neapolitan
+- `/sk/` for Slovak
+- `/sl/` for Slovene
+- `/fy/` for West Frisian
+- `/se/` for Northern Sami
+- `/scn/` for Sicilian
+- `/ar/` for Modern Standard Arabic
+- `/ar-ae/` for Emirati Arabic
+- `/ar-eg/` for Egyptian Arabic
+- `/ar-sa/` for Saudi Arabic
 
 Locale configuration lives in [config/locales.toml](config/locales.toml), and
 translated website keys live in [config/i18n/keys](config/i18n/keys). The
@@ -314,6 +326,10 @@ identity values, and rendering parameters stay unchanged.
 
 The Elfdalian (`/ovd/`) locale is a best-effort translation and should be
 reviewed by a native speaker before being treated as authoritative.
+The West Frisian (`/fy/`) and Northern Sami (`/se/`) locales are also
+best-effort translations and should be reviewed by native speakers.
+Arabic locales render right-to-left. API examples, generated URLs, and code
+snippets remain left-to-right so copied endpoint text stays readable.
 
 ## Testing And Release Evidence
 

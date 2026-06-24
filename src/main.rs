@@ -119,6 +119,13 @@ const GA_IE_KEYS_TOML: &str = include_str!("../config/i18n/keys/ga-IE.toml");
 const LB_LU_KEYS_TOML: &str = include_str!("../config/i18n/keys/lb-LU.toml");
 const RO_RO_KEYS_TOML: &str = include_str!("../config/i18n/keys/ro-RO.toml");
 const SR_RS_KEYS_TOML: &str = include_str!("../config/i18n/keys/sr-RS.toml");
+const NAP_IT_KEYS_TOML: &str = include_str!("../config/i18n/keys/nap-IT.toml");
+const SK_SK_KEYS_TOML: &str = include_str!("../config/i18n/keys/sk-SK.toml");
+const SL_SI_KEYS_TOML: &str = include_str!("../config/i18n/keys/sl-SI.toml");
+const FY_NL_KEYS_TOML: &str = include_str!("../config/i18n/keys/fy-NL.toml");
+const SE_NO_KEYS_TOML: &str = include_str!("../config/i18n/keys/se-NO.toml");
+const SCN_IT_KEYS_TOML: &str = include_str!("../config/i18n/keys/scn-IT.toml");
+const AR_001_KEYS_TOML: &str = include_str!("../config/i18n/keys/ar-001.toml");
 
 static RENDER_SLOTS: LazyLock<Arc<Semaphore>> =
     LazyLock::new(|| Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS)));
@@ -133,6 +140,7 @@ struct LocaleConfig {
 struct Locale {
     locale_id: String,
     html_lang: String,
+    dir: Option<String>,
     url_prefix: String,
     display_name: String,
     flag: String,
@@ -239,6 +247,20 @@ static RO_RO_KEYS: LazyLock<toml::Value> =
     LazyLock::new(|| parse_locale_keys("ro-RO", RO_RO_KEYS_TOML));
 static SR_RS_KEYS: LazyLock<toml::Value> =
     LazyLock::new(|| parse_locale_keys("sr-RS", SR_RS_KEYS_TOML));
+static NAP_IT_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("nap-IT", NAP_IT_KEYS_TOML));
+static SK_SK_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("sk-SK", SK_SK_KEYS_TOML));
+static SL_SI_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("sl-SI", SL_SI_KEYS_TOML));
+static FY_NL_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("fy-NL", FY_NL_KEYS_TOML));
+static SE_NO_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("se-NO", SE_NO_KEYS_TOML));
+static SCN_IT_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("scn-IT", SCN_IT_KEYS_TOML));
+static AR_001_KEYS: LazyLock<toml::Value> =
+    LazyLock::new(|| parse_locale_keys("ar-001", AR_001_KEYS_TOML));
 
 fn validate_locale_config(config: &LocaleConfig) -> Result<(), String> {
     if config.default_locale != DEFAULT_LOCALE_ID {
@@ -270,6 +292,12 @@ fn validate_locale_config(config: &LocaleConfig) -> Result<(), String> {
             || locale.url_prefix.contains(char::is_whitespace)
         {
             return Err(format!("invalid locale prefix {}", locale.url_prefix));
+        }
+        if let Some(dir) = locale.dir.as_deref()
+            && dir != "ltr"
+            && dir != "rtl"
+        {
+            return Err(format!("invalid locale direction {dir}"));
         }
     }
     if !locale_ids.contains(config.default_locale.as_str()) {
@@ -356,6 +384,13 @@ fn locale_keys(locale_id: &str) -> &'static toml::Value {
         "lb-LU" => &LB_LU_KEYS,
         "ro-RO" => &RO_RO_KEYS,
         "sr-RS" => &SR_RS_KEYS,
+        "nap-IT" => &NAP_IT_KEYS,
+        "sk-SK" => &SK_SK_KEYS,
+        "sl-SI" => &SL_SI_KEYS,
+        "fy-NL" => &FY_NL_KEYS,
+        "se-NO" => &SE_NO_KEYS,
+        "scn-IT" => &SCN_IT_KEYS,
+        "ar-001" | "ar-AE" | "ar-EG" | "ar-SA" => &AR_001_KEYS,
         "nl-BE" => &NL_NL_KEYS,
         "fr-BE" | "fr-CA" => &FR_FR_KEYS,
         "en-CA" => &EN_GB_KEYS,
@@ -395,6 +430,10 @@ impl I18n {
 
     fn html_lang(&self) -> &str {
         &self.locale.html_lang
+    }
+
+    fn dir(&self) -> &str {
+        self.locale.dir.as_deref().unwrap_or("ltr")
     }
 }
 
@@ -2605,7 +2644,7 @@ fn shared_page_styles() -> &'static str {
     }
     .language-menu {
       position: absolute;
-      right: 0;
+      inset-inline-end: 0;
       bottom: calc(100% + 8px);
       min-width: 190px;
       padding: 8px;
@@ -2659,7 +2698,7 @@ fn shared_page_styles() -> &'static str {
     }
     ul {
       margin: 0;
-      padding-left: 20px;
+      padding-inline-start: 20px;
     }
     .lead {
       max-width: 70ch;
@@ -2690,6 +2729,11 @@ fn shared_page_styles() -> &'static str {
     code {
       font-family: "IBM Plex Mono", monospace;
     }
+    pre, code, .url-text {
+      direction: ltr;
+      text-align: left;
+      unicode-bidi: plaintext;
+    }
     .site-footer {
       padding: 24px 28px 28px;
       border-top: 1px solid var(--line);
@@ -2707,8 +2751,8 @@ fn shared_page_styles() -> &'static str {
         flex-direction: column;
       }
       .language-menu {
-        left: 0;
-        right: auto;
+        inset-inline-start: 0;
+        inset-inline-end: auto;
       }
       .page {
         padding: 24px;
@@ -3338,7 +3382,7 @@ fn render_page_html(params: PageHtmlParams<'_>) -> String {
     };
     format!(
         r#"<!DOCTYPE html>
-<html lang="{html_lang}">
+<html lang="{html_lang}" dir="{dir}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -3363,6 +3407,7 @@ fn render_page_html(params: PageHtmlParams<'_>) -> String {
         styles = shared_page_styles(),
         nonce = nonce,
         html_lang = escape_html_attribute(i18n.html_lang()),
+        dir = escape_html_attribute(i18n.dir()),
         nav = render_nav_html(i18n),
         eyebrow = eyebrow,
         page_title = page_title,
@@ -3388,7 +3433,7 @@ fn render_index_html(
     };
     format!(
         r#"<!DOCTYPE html>
-<html lang="{html_lang}">
+<html lang="{html_lang}" dir="{dir}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -3400,7 +3445,7 @@ fn render_index_html(
       grid-template-columns: 1.1fr 0.9fr;
     }}
     .copy, .preview {{ padding: 36px; }}
-    .copy {{ border-right: 1px solid var(--line); }}
+    .copy {{ border-inline-end: 1px solid var(--line); }}
     h1 {{
       font-size: clamp(2.2rem, 6vw, 4.4rem);
       line-height: 0.95;
@@ -3607,7 +3652,7 @@ fn render_index_html(
     code {{ font-family: "IBM Plex Mono", monospace; }}
     @media (max-width: 860px) {{
       .hero {{ grid-template-columns: 1fr; }}
-      .copy {{ border-right: 0; border-bottom: 1px solid var(--line); }}
+      .copy {{ border-inline-end: 0; border-bottom: 1px solid var(--line); }}
       .field-grid {{ grid-template-columns: 1fr; }}
       .example-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
     }}
@@ -4096,6 +4141,7 @@ fn render_index_html(
         ),
         styles = shared_page_styles(),
         html_lang = escape_html_attribute(i18n.html_lang()),
+        dir = escape_html_attribute(i18n.dir()),
         nav = render_nav_html(i18n),
         hero_eyebrow = i18n.t_attr("hero.eyebrow", "hashavatar.app"),
         hero_title = i18n.t_attr("hero.title", "Generate A Public Avatar In Seconds"),
@@ -5096,7 +5142,8 @@ mod tests {
         assert!(is_allowed_locale_id("it-IT"));
         assert!(is_allowed_locale_id("pl-PL"));
         assert!(is_allowed_locale_id("cs-CZ"));
-        assert!(!is_allowed_locale_id("sk-SK"));
+        assert!(is_allowed_locale_id("sk-SK"));
+        assert!(!is_allowed_locale_id("mk-MK"));
     }
 
     #[test]
@@ -5203,7 +5250,7 @@ mod tests {
     #[test]
     fn locale_config_loads_requested_languages() {
         assert_eq!(default_locale().locale_id, "en-EU");
-        assert_eq!(locales().len(), 48);
+        assert_eq!(locales().len(), 58);
         assert_eq!(locale_by_prefix("en-gb").unwrap().locale_id, "en-GB");
         assert_eq!(locale_by_prefix("en-us").unwrap().locale_id, "en-US");
         assert_eq!(locale_by_prefix("fr").unwrap().display_name, "Français");
@@ -5266,7 +5313,33 @@ mod tests {
         );
         assert_eq!(locale_by_prefix("ro").unwrap().display_name, "Română");
         assert_eq!(locale_by_prefix("sr").unwrap().display_name, "Српски");
-        assert!(locale_by_prefix("sk").is_none());
+        assert_eq!(locale_by_prefix("nap").unwrap().display_name, "Napulitano");
+        assert_eq!(locale_by_prefix("sk").unwrap().display_name, "Slovenčina");
+        assert_eq!(locale_by_prefix("sl").unwrap().display_name, "Slovenščina");
+        assert_eq!(locale_by_prefix("fy").unwrap().display_name, "Frysk");
+        assert_eq!(
+            locale_by_prefix("se").unwrap().display_name,
+            "Davvisámegiella"
+        );
+        assert_eq!(locale_by_prefix("scn").unwrap().display_name, "Sicilianu");
+        assert_eq!(
+            locale_by_prefix("ar").unwrap().display_name,
+            "العربية الفصحى"
+        );
+        assert_eq!(locale_by_prefix("ar").unwrap().dir.as_deref(), Some("rtl"));
+        assert_eq!(
+            locale_by_prefix("ar-ae").unwrap().display_name,
+            "العربية الإماراتية"
+        );
+        assert_eq!(
+            locale_by_prefix("ar-eg").unwrap().display_name,
+            "العربية المصرية"
+        );
+        assert_eq!(
+            locale_by_prefix("ar-sa").unwrap().display_name,
+            "العربية السعودية"
+        );
+        assert!(locale_by_prefix("mk").is_none());
     }
 
     #[test]
@@ -5409,7 +5482,7 @@ mod tests {
         let german = i18n(locale_by_id("de-DE").expect("German locale"));
         let html = render_index_html(&nonce, false, false, german);
 
-        assert!(html.contains(r#"<html lang="de-DE">"#));
+        assert!(html.contains(r#"<html lang="de-DE" dir="ltr">"#));
         assert!(html.contains("Öffentliche Avatare in Sekunden erzeugen"));
         assert!(html.contains(r#"<details class="language-switcher">"#));
         assert!(html.contains(r#"<a href="/">🇪🇺 English (EU)</a>"#));
@@ -5460,8 +5533,31 @@ mod tests {
         assert!(html.contains(r#"<a href="/lb/">🇱🇺 Lëtzebuergesch</a>"#));
         assert!(html.contains(r#"<a href="/ro/">🇷🇴 Română</a>"#));
         assert!(html.contains(r#"<a href="/sr/">🇷🇸 Српски</a>"#));
+        assert!(html.contains(r#"<a href="/nap/">🇮🇹 Napulitano</a>"#));
+        assert!(html.contains(r#"<a href="/sk/">🇸🇰 Slovenčina</a>"#));
+        assert!(html.contains(r#"<a href="/sl/">🇸🇮 Slovenščina</a>"#));
+        assert!(html.contains(r#"<a href="/fy/">🇳🇱 Frysk</a>"#));
+        assert!(html.contains(r#"<a href="/se/">🇳🇴 Davvisámegiella</a>"#));
+        assert!(html.contains(r#"<a href="/scn/">🇮🇹 Sicilianu</a>"#));
+        assert!(html.contains(r#"<a href="/ar/">🌐 العربية الفصحى</a>"#));
+        assert!(html.contains(r#"<a href="/ar-ae/">🇦🇪 العربية الإماراتية</a>"#));
+        assert!(html.contains(r#"<a href="/ar-eg/">🇪🇬 العربية المصرية</a>"#));
+        assert!(html.contains(r#"<a href="/ar-sa/">🇸🇦 العربية السعودية</a>"#));
         assert!(html.contains("/v1/avatar?id=cat@hashavatar.app"));
         assert!(!html.contains("/de/v1/avatar"));
+    }
+
+    #[test]
+    fn arabic_locale_renders_rtl_shell_without_reversing_urls() {
+        let nonce = CspNonce("testnonce".to_string());
+        let arabic = i18n(locale_by_id("ar-AE").expect("Arabic locale"));
+        let html = render_index_html(&nonce, false, false, arabic);
+
+        assert!(html.contains(r#"<html lang="ar-AE" dir="rtl">"#));
+        assert!(html.contains("إنشاء أفاتار عام"));
+        assert!(html.contains(r#"<div id="avatar-url" class="url-text">"#));
+        assert!(html.contains("pre, code, .url-text"));
+        assert!(html.contains("direction: ltr;"));
     }
 
     #[test]

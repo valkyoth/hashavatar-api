@@ -11,7 +11,7 @@ audit, SBOM, reproducibility, smoke, and GitHub CodeQL default setup checks.
 
 ## Current Status
 
-The current service version is `1.1.0`.
+The current service version is `1.1.1`.
 
 Implemented now:
 
@@ -25,7 +25,7 @@ Implemented now:
 - Namespace-aware tenant and style-version parameters.
 - SHA-512 identity hashing.
 - WebP avatar responses.
-- Avatar families from `hashavatar 1.1.0`: `cat`, `dog`, `robot`, `fox`,
+- Avatar families from `hashavatar 1.1.1`: `cat`, `dog`, `robot`, `fox`,
   `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`,
   `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`,
   `pizza`, `icecream`, `octopus`, `knight`, `bear`, `penguin`, `dragon`,
@@ -74,7 +74,7 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Service license | `EUPL-1.2` |
-| Renderer crate | crates.io `hashavatar 1.1.0` |
+| Renderer crate | crates.io `hashavatar 1.1.1` |
 | MSRV | Rust `1.96.0` |
 | Runtime container | Wolfi |
 | HTTP framework | `axum` |
@@ -266,6 +266,12 @@ addresses as metric attributes.
 
 English (EU) is the default website language and renders at the root paths. The
 other website locales use stable prefixes:
+
+Translations are AI-assisted best-effort text. We welcome native speakers to
+double-check their language, improve phrasing, and open a pull request or commit
+against the TOML keys in [config/i18n/keys](config/i18n/keys). The language
+layer only changes website copy; it never changes generated avatar identity,
+namespace, style, or API parameters.
 
 - `/en-gb/` for English (UK)
 - `/en-us/` for English (US)

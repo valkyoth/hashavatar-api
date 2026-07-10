@@ -10,11 +10,11 @@ RUN cargo build --release \
     && rm -rf target /usr/local/cargo/registry /usr/local/cargo/git
 
 FROM cgr.dev/chainguard/wolfi-base:latest@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
-RUN apk add --no-cache ca-certificates glibc \
-    && addgroup -S appuser \
+RUN addgroup -S appuser \
     && adduser -S -D -H -u 10001 -G appuser appuser
 WORKDIR /app
 
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /usr/local/bin/hashavatar-api /usr/local/bin/hashavatar-api
 
 ENV PORT=8080

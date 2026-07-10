@@ -58,6 +58,12 @@ if ! awk '
 ' Dockerfile; then
     fail "container base images must be pinned by digest"
 fi
+if grep -Eq '^[[:space:]]*RUN .*apk (add|upgrade)' Dockerfile; then
+    fail "runtime image must not install packages from a live APK repository"
+fi
+if ! grep -Eq 'image: ghcr\.io/valkyoth/fluxheim:[^[:space:]]+@sha256:[0-9a-f]{64}$' deploy/podman-compose.yml; then
+    fail "Fluxheim deployment image must be pinned by digest"
+fi
 if ! awk '
     /^[[:space:]]*uses:/ {
         split($2, action, "@")

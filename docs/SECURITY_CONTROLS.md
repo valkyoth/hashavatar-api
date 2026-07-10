@@ -21,7 +21,7 @@ local test and release gates.
 | PII in infrastructure logs | Email-shaped identities are accepted for compatibility; callers who want less personal data in URL logs should send opaque stable ids or one-way hashes. |
 | Vulnerable or incompatible dependencies | `cargo audit` and `cargo deny check` run in the standard check script and CI. |
 | Plaintext backend transport | Remote OTLP and custom S3 endpoints require HTTPS. HTTP is accepted only for loopback-local development endpoints, and the application enables explicit Rustls-backed clients for both integrations. |
-| Mutable release inputs | GitHub actions and Docker base images are pinned to reviewed commit SHAs and image digests. Dependabot tracks Cargo, action, and Docker updates; image publishing emits SBOM and maximum provenance attestations. |
+| Mutable release inputs | GitHub actions, Docker base images, and the Fluxheim deployment image are pinned to reviewed commit SHAs and image digests. The runtime image does not install from a live package repository; its CA bundle comes from the pinned builder. Dependabot tracks Cargo, action, and Docker updates; image publishing emits SBOM and maximum provenance attestations. |
 
 ## Self-Testing
 

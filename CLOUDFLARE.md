@@ -67,7 +67,9 @@ If you want stricter cache deduplication:
 
 - normalize query ordering at the application layer
 - prefer canonical URLs in clients
-- keep `id`, `kind`, `background`, `format`, `size` only
+- include every rendering parameter in the cache key: `id`, `tenant`,
+  `style_version`, `algorithm`, `kind`, `background`, `accessory`, `color`,
+  `expression`, `shape`, `format`, and `size`
 - prefer the path API when you want the cleanest cache key shape
 
 ## 7. Why this is safe to cache hard
@@ -75,8 +77,14 @@ If you want stricter cache deduplication:
 The avatar response is deterministic for the full request tuple:
 
 - identity
+- tenant and style version
+- algorithm
 - kind
 - background
+- accessory
+- color
+- expression
+- shape
 - format
 - size
 

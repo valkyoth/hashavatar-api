@@ -5,7 +5,8 @@ It runs two containers on one private network:
 
 - `hashavatar`: builds this repository with the Wolfi runtime image from
   `../Dockerfile` and listens internally on port `8080`.
-- `fluxheim`: runs `ghcr.io/valkyoth/fluxheim:v1.6.30-wolfi`, publishes ports
+- `fluxheim`: runs the digest-pinned
+  `ghcr.io/valkyoth/fluxheim:v1.7.6-wolfi` image, publishes ports
   `80` and `443`, terminates TLS, redirects HTTP to HTTPS, redirects
   `www.hashavatar.app` to `hashavatar.app`, and proxies traffic to
   `hashavatar:8080`.
@@ -25,6 +26,10 @@ filesystem, no new privileges, all Linux capabilities dropped, a small `/tmp`
 tmpfs, and CPU, memory, PID, and file-descriptor ceilings. Fluxheim has separate
 resource ceilings. Tune these values with production load tests rather than
 removing them.
+
+The deployment image, build image, runtime image, and GitHub actions are pinned
+to immutable revisions. The Wolfi runtime does not download packages during the
+build; its CA bundle is copied from the pinned Rust builder.
 
 Both Fluxheim and Axum reject request bodies larger than `4KiB`; the public API
 uses request bodies only for small, bounded telemetry events.

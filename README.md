@@ -77,6 +77,7 @@ Intentionally external:
 | Renderer crate | crates.io `hashavatar 1.1.2` |
 | MSRV | Rust `1.97.0` |
 | Runtime container | Wolfi |
+| Gateway example | Fluxheim `1.7.6` Wolfi image, digest-pinned |
 | HTTP framework | `axum` |
 | Object storage | Optional S3-compatible backend |
 | Rate limiter | Bounded LRU map |
@@ -84,6 +85,7 @@ Intentionally external:
 | Internal errors | Detailed logs, generic client body |
 | Security headers | CSP, permissions policy, referrer policy, `nosniff`, frame denial, CORP, COOP, HSTS |
 | Release evidence | fmt, metadata, docs, clippy, tests, deny, audit, smoke, SBOM, reproducibility |
+| Release inputs | Actions and container images pinned to immutable revisions |
 | Code scanning | GitHub CodeQL default setup |
 
 Security-control details live in
@@ -429,10 +431,11 @@ The repository includes:
 - Markdown link checks
 - security invariant checks
 - clippy with warnings denied
-- unit tests for rate limiting, trusted proxy handling, renderer validation,
-  and internal error disclosure behavior
+- unit tests for rate limiting, trusted proxy handling, body limits, transport
+  validation, renderer validation, cache keys, and internal error disclosure
 - local HTTP smoke tests for health, WebP rendering, security headers,
-  unsupported algorithm/format rejection, and invalid namespace rejection
+  S3-enabled startup, unsupported algorithm/format/style rejection, oversized
+  body rejection, and invalid namespace rejection
 - local Podman smoke tests for the Wolfi image when
   `HASHAVATAR_API_GATE_PODMAN=1` is set
 - `cargo deny` dependency and license policy

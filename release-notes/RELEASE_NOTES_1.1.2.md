@@ -1,14 +1,14 @@
 # hashavatar-api 1.1.2 Release Notes
 
-Status: draft
+Status: release candidate
 
 ## Summary
 
 `1.1.2` is the next stable patch release for the API, renderer dependency,
 Rust toolchain, dependency graph, and CI tooling.
 
-These notes are based on the current working tree and should be rechecked
-against the final tag before publishing.
+These notes describe the release candidate and should be checked against the
+final tag before publishing.
 
 ## Changed
 
@@ -33,12 +33,14 @@ against the final tag before publishing.
 - Hardened embedded JSON, drawing arithmetic, and object-key identity hashing.
 - Pinned GitHub actions and container bases to immutable revisions, enabled
   image SBOM/provenance attestations, and added deployment resource ceilings.
+- Pinned the Fluxheim deployment image and removed live APK package installation
+  from the runtime image build.
+- Updated the digest-pinned Fluxheim Wolfi deployment image to `v1.7.6`.
 
 ## Verification
 
 ```bash
 cargo outdated --workspace --root-deps-only
-scripts/checks.sh
-scripts/smoke_local.sh
-scripts/podman_smoke.sh
+HASHAVATAR_API_GATE_PODMAN=1 scripts/stable_release_gate.sh check
+podman compose -f deploy/podman-compose.yml config
 ```

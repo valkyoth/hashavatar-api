@@ -1,4 +1,4 @@
-FROM rust:1.97 AS build
+FROM rust:1.97@sha256:44637ff22d0a6571a221bfaf137849711ad02ff4723dbb4736e297538f6a3e60 AS build
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
@@ -9,7 +9,7 @@ RUN cargo build --release \
     && cp target/release/hashavatar-api /usr/local/bin/hashavatar-api \
     && rm -rf target /usr/local/cargo/registry /usr/local/cargo/git
 
-FROM cgr.dev/chainguard/wolfi-base:latest
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
 RUN apk add --no-cache ca-certificates glibc \
     && addgroup -S appuser \
     && adduser -S -D -H -u 10001 -G appuser appuser

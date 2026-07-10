@@ -1,4 +1,4 @@
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -11,7 +11,7 @@ use aws_sdk_s3::config::Builder as S3ConfigBuilder;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::ServerSideEncryption;
-use axum::extract::{ConnectInfo, Extension, Path, Query, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Extension, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -60,6 +60,7 @@ const MIN_SIZE: u32 = 64;
 const MAX_SIZE: u32 = 1024;
 const MAX_ID_BYTES: usize = 512;
 const MAX_NAMESPACE_COMPONENT_BYTES: usize = 64;
+const MAX_REQUEST_BODY_BYTES: usize = 4 * 1024;
 const DEFAULT_S3_PRESIGN_TTL_SECONDS: u64 = 900;
 const MIN_S3_PRESIGN_TTL_SECONDS: u64 = 60;
 const MAX_S3_PRESIGN_TTL_SECONDS: u64 = 604_800;
@@ -67,6 +68,12 @@ const PRESET_PAGE_SIZE: usize = 12;
 const INVALID_NAMESPACE_MESSAGE: &str = "invalid namespace: tenant and style_version must be 1-64 ASCII letters, digits, hyphens, or underscores";
 const INVALID_HASH_ALGORITHM_MESSAGE: &str = "unsupported hash algorithm: expected sha512";
 const INVALID_AVATAR_FORMAT_MESSAGE: &str = "unsupported avatar format: expected webp";
+const INVALID_AVATAR_KIND_MESSAGE: &str = "unsupported avatar kind";
+const INVALID_AVATAR_BACKGROUND_MESSAGE: &str = "unsupported avatar background";
+const INVALID_AVATAR_ACCESSORY_MESSAGE: &str = "unsupported avatar accessory";
+const INVALID_AVATAR_COLOR_MESSAGE: &str = "unsupported avatar color";
+const INVALID_AVATAR_EXPRESSION_MESSAGE: &str = "unsupported avatar expression";
+const INVALID_AVATAR_SHAPE_MESSAGE: &str = "unsupported avatar shape";
 const INVALID_AVATAR_RENDER_MESSAGE: &str = "avatar generation failed";
 const INDEX_SCRIPT_SHA256: &str = "'sha256-7gjoUnTfcILxVkX3DugGXgaAEhWr+Pn91S0M+2HGQTs='";
 const INDEX_SCRIPT_SHA256_COMPAT: &str = "'sha256-ZswfTY7H35rbv8WC7NXBoiC7WNu86vSzCDChNWwZZDM='";
@@ -719,7 +726,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         observability,
     };
 
-    let app = Router::new()
+    let app = app_router(state);
+
+    let listener = tokio::net::TcpListener::bind(address).await?;
+    tracing::info!(service = SITE_NAME, %address, "listening");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
+    telemetry_guard.shutdown();
+    Ok(())
+}
+
+fn app_router(state: AppState) -> Router {
+    Router::new()
         .route("/", get(index))
         .route("/help", get(help_page))
         .route("/docs", get(docs_page))
@@ -752,19 +774,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/v1/avatar/link", get(query_avatar_link))
         .route("/avatar/{kind}/{identity}/{format}", get(path_avatar))
         .with_state(state.clone())
+        .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            telemetry_gate,
+        ))
         .layer(middleware::from_fn_with_state(state, observe_request))
-        .layer(middleware::from_fn(add_security_headers));
-
-    let listener = tokio::net::TcpListener::bind(address).await?;
-    tracing::info!(service = SITE_NAME, %address, "listening");
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .with_graceful_shutdown(shutdown_signal())
-    .await?;
-    telemetry_guard.shutdown();
-    Ok(())
+        .layer(middleware::from_fn(add_security_headers))
 }
 
 fn init_logging() {
@@ -1680,11 +1696,14 @@ async fn og_png(
         return bad_request(INVALID_NAMESPACE_MESSAGE);
     }
 
-    let lead_kind = query
-        .kind
-        .as_deref()
-        .and_then(|raw| AvatarKind::from_str(raw).ok())
-        .unwrap_or(AvatarKind::Monster);
+    let lead_kind = match parse_avatar_option(
+        query.kind.as_deref(),
+        AvatarKind::Monster,
+        INVALID_AVATAR_KIND_MESSAGE,
+    ) {
+        Ok(kind) => kind,
+        Err(message) => return bad_request(&message),
+    };
 
     let render_permit = match RENDER_SLOTS.clone().try_acquire_owned() {
         Ok(permit) => permit,
@@ -1814,18 +1833,36 @@ struct AvatarGenerateTelemetryPayload {
     size: u32,
 }
 
-async fn telemetry_page_visible(
-    State(state): State<AppState>,
-    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Json(payload): Json<VisibleTelemetryPayload>,
-) -> Response {
-    if let Err(response) =
-        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::Telemetry).await
+async fn telemetry_gate(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    if !request.uri().path().starts_with("/telemetry/") {
+        return next.run(request).await;
+    }
+
+    let Some(peer_addr) = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|connect_info| connect_info.0)
+    else {
+        return internal_error("missing peer address for telemetry rate limit");
+    };
+    if let Err(response) = enforce_limits(
+        &state,
+        request.headers(),
+        peer_addr.ip(),
+        RateLimitRoute::Telemetry,
+    )
+    .await
     {
         return response;
     }
 
+    next.run(request).await
+}
+
+async fn telemetry_page_visible(
+    State(state): State<AppState>,
+    Json(payload): Json<VisibleTelemetryPayload>,
+) -> Response {
     if !state.observability.enabled() {
         return StatusCode::ACCEPTED.into_response();
     }
@@ -1853,16 +1890,8 @@ async fn telemetry_page_visible(
 
 async fn telemetry_click(
     State(state): State<AppState>,
-    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
     Json(payload): Json<ClickTelemetryPayload>,
 ) -> Response {
-    if let Err(response) =
-        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::Telemetry).await
-    {
-        return response;
-    }
-
     if !is_allowed_click(&payload.kind, &payload.target) || !is_allowed_locale_id(&payload.locale) {
         return bad_request("invalid telemetry event");
     }
@@ -1874,16 +1903,8 @@ async fn telemetry_click(
 
 async fn telemetry_avatar_generate(
     State(state): State<AppState>,
-    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
     Json(payload): Json<AvatarGenerateTelemetryPayload>,
 ) -> Response {
-    if let Err(response) =
-        enforce_limits(&state, &headers, peer_addr.ip(), RateLimitRoute::Telemetry).await
-    {
-        return response;
-    }
-
     let style = match avatar_telemetry_style_from_payload(&payload) {
         Ok(style) => style,
         Err(message) => return bad_request(message),
@@ -2284,19 +2305,19 @@ fn rate_limit_key(route: RateLimitRoute, ip: &str) -> String {
 fn client_ip(headers: &HeaderMap, peer_ip: IpAddr, trusted_proxies: &TrustedProxies) -> String {
     let peer_ip = normalize_ip(peer_ip);
     if !trusted_proxies.contains(peer_ip) {
-        return peer_ip.to_string();
+        return rate_limit_ip_identity(peer_ip);
     }
 
     if let Some(ip) = single_ip_header(headers, "cf-connecting-ip")
         && is_global_client_ip(ip)
     {
-        return ip.to_string();
+        return rate_limit_ip_identity(ip);
     }
 
     if let Some(ip) = single_ip_header(headers, "x-real-ip")
         && is_global_client_ip(ip)
     {
-        return ip.to_string();
+        return rate_limit_ip_identity(ip);
     }
 
     if let Some(value) = headers
@@ -2308,11 +2329,22 @@ fn client_ip(headers: &HeaderMap, peer_ip: IpAddr, trusted_proxies: &TrustedProx
                 && !trusted_proxies.contains(ip)
                 && is_global_client_ip(ip)
             {
-                return ip.to_string();
+                return rate_limit_ip_identity(ip);
             }
         }
     }
-    peer_ip.to_string()
+    rate_limit_ip_identity(peer_ip)
+}
+
+fn rate_limit_ip_identity(ip: IpAddr) -> String {
+    match normalize_ip(ip) {
+        IpAddr::V6(ip) if !ip.is_loopback() => {
+            let mut octets = ip.octets();
+            octets[8..].fill(0);
+            format!("{}/64", Ipv6Addr::from(octets))
+        }
+        ip => ip.to_string(),
+    }
 }
 
 fn is_global_client_ip(ip: IpAddr) -> bool {
@@ -2672,13 +2704,14 @@ fn sha256_hex(input: &str) -> String {
 fn object_key_for(request: &AvatarRequest, identity: &str) -> String {
     let accessory = request.effective_accessory();
     let expression = request.effective_expression();
+    let identity_digest = sha256_hex(identity);
     let digest = Sha256::digest(
         format!(
             "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
             request.namespace_tenant,
             request.namespace_style,
             DEFAULT_HASH_ALGORITHM,
-            identity,
+            identity_digest,
             request.kind,
             request.background,
             accessory,
@@ -2741,6 +2774,20 @@ fn validate_hash_algorithm(value: Option<&str>) -> Result<(), String> {
     }
 }
 
+fn parse_avatar_option<T>(
+    value: Option<&str>,
+    default: T,
+    invalid_message: &'static str,
+) -> Result<T, String>
+where
+    T: FromStr,
+{
+    match value.map(str::trim) {
+        Some(raw) if !raw.is_empty() => T::from_str(raw).map_err(|_| invalid_message.to_string()),
+        _ => Ok(default),
+    }
+}
+
 fn is_valid_namespace_component(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_NAMESPACE_COMPONENT_BYTES
@@ -2751,6 +2798,37 @@ fn is_valid_namespace_component(value: &str) -> bool {
 
 fn clamp_s3_presign_ttl_seconds(ttl: u64) -> u64 {
     ttl.clamp(MIN_S3_PRESIGN_TTL_SECONDS, MAX_S3_PRESIGN_TTL_SECONDS)
+}
+
+fn validated_s3_endpoint(raw: &str) -> Result<String, String> {
+    let endpoint = url::Url::parse(raw.trim())
+        .map_err(|_| "must be an absolute HTTP or HTTPS URL".to_string())?;
+    let host = endpoint
+        .host_str()
+        .ok_or_else(|| "must include a host".to_string())?;
+    let host_for_ip = host
+        .strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(host);
+
+    if !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+        || endpoint.query().is_some()
+        || endpoint.fragment().is_some()
+    {
+        return Err("must not include credentials, a query, or a fragment".to_string());
+    }
+
+    let is_loopback = host.eq_ignore_ascii_case("localhost")
+        || host_for_ip
+            .parse::<IpAddr>()
+            .is_ok_and(|ip| normalize_ip(ip).is_loopback());
+    match endpoint.scheme() {
+        "https" => Ok(endpoint.to_string()),
+        "http" if is_loopback => Ok(endpoint.to_string()),
+        "http" => Err("must use HTTPS unless the endpoint is loopback-local".to_string()),
+        _ => Err("must use HTTP or HTTPS".to_string()),
+    }
 }
 
 fn normalize_s3_prefix(prefix: &str) -> Result<String, String> {
@@ -2811,8 +2889,10 @@ fn server_busy() -> Response {
 }
 
 fn draw_rect(image: &mut RgbaImage, x: u32, y: u32, width: u32, height: u32, color: Rgba<u8>) {
-    for yy in y..(y + height).min(image.height()) {
-        for xx in x..(x + width).min(image.width()) {
+    let end_y = y.saturating_add(height).min(image.height());
+    let end_x = x.saturating_add(width).min(image.width());
+    for yy in y..end_y {
+        for xx in x..end_x {
             image.put_pixel(xx, yy, color);
         }
     }
@@ -2825,8 +2905,12 @@ fn draw_circle(image: &mut RgbaImage, cx: i32, cy: i32, radius: i32, color: Rgba
     for y in -radius..=radius {
         for x in -radius..=radius {
             if is_inside_circle(x, y, radius) {
-                let px = cx + x;
-                let py = cy + y;
+                let Some(px) = cx.checked_add(x) else {
+                    continue;
+                };
+                let Some(py) = cy.checked_add(y) else {
+                    continue;
+                };
                 if px >= 0 && py >= 0 && (px as u32) < image.width() && (py as u32) < image.height()
                 {
                     image.put_pixel(px as u32, py as u32, color);
@@ -3508,10 +3592,11 @@ fn preset_examples() -> Vec<PresetExample> {
 
 fn preset_examples_json() -> String {
     static PRESET_EXAMPLES_JSON: LazyLock<String> = LazyLock::new(|| {
-        serde_json::to_string(&preset_examples()).unwrap_or_else(|error| {
+        let json = serde_json::to_string(&preset_examples()).unwrap_or_else(|error| {
             tracing::error!(%error, "failed to serialize preset examples");
             "[]".to_string()
-        })
+        });
+        escape_json_script_payload(json)
     });
 
     PRESET_EXAMPLES_JSON.to_string()
@@ -3560,11 +3645,17 @@ fn render_meta_tags(
 }
 
 fn json_script_string(value: &str, fallback: &str) -> String {
-    serde_json::to_string(value)
+    let json = serde_json::to_string(value)
         .or_else(|_| serde_json::to_string(fallback))
-        .unwrap_or_else(|_| "\"\"".to_string())
-        .replace("</", "<\\/")
+        .unwrap_or_else(|_| "\"\"".to_string());
+    escape_json_script_payload(json)
+}
+
+fn escape_json_script_payload(json: String) -> String {
+    json.replace("</", "<\\/")
         .replace("<!--", "<\\u0021--")
+        .replace('\u{2028}', "\\u2028")
+        .replace('\u{2029}', "\\u2029")
 }
 
 fn render_json_ld(title: &str, description: &str, canonical: &str, csp_nonce: &CspNonce) -> String {
@@ -4976,36 +5067,36 @@ impl AvatarRequest {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| DEFAULT_NAMESPACE_STYLE.to_string()),
-            kind: query
-                .kind
-                .as_deref()
-                .and_then(|raw| AvatarKind::from_str(raw).ok())
-                .unwrap_or(AvatarKind::Cat),
-            background: query
-                .background
-                .as_deref()
-                .and_then(|raw| AvatarBackground::from_str(raw).ok())
-                .unwrap_or(AvatarBackground::Themed),
-            accessory: query
-                .accessory
-                .as_deref()
-                .and_then(|raw| AvatarAccessory::from_str(raw).ok())
-                .unwrap_or(DEFAULT_ACCESSORY),
-            color: query
-                .color
-                .as_deref()
-                .and_then(|raw| AvatarColor::from_str(raw).ok())
-                .unwrap_or(DEFAULT_COLOR),
-            expression: query
-                .expression
-                .as_deref()
-                .and_then(|raw| AvatarExpression::from_str(raw).ok())
-                .unwrap_or(DEFAULT_EXPRESSION),
-            shape: query
-                .shape
-                .as_deref()
-                .and_then(|raw| AvatarShape::from_str(raw).ok())
-                .unwrap_or(DEFAULT_SHAPE),
+            kind: parse_avatar_option(
+                query.kind.as_deref(),
+                AvatarKind::Cat,
+                INVALID_AVATAR_KIND_MESSAGE,
+            )?,
+            background: parse_avatar_option(
+                query.background.as_deref(),
+                AvatarBackground::Themed,
+                INVALID_AVATAR_BACKGROUND_MESSAGE,
+            )?,
+            accessory: parse_avatar_option(
+                query.accessory.as_deref(),
+                DEFAULT_ACCESSORY,
+                INVALID_AVATAR_ACCESSORY_MESSAGE,
+            )?,
+            color: parse_avatar_option(
+                query.color.as_deref(),
+                DEFAULT_COLOR,
+                INVALID_AVATAR_COLOR_MESSAGE,
+            )?,
+            expression: parse_avatar_option(
+                query.expression.as_deref(),
+                DEFAULT_EXPRESSION,
+                INVALID_AVATAR_EXPRESSION_MESSAGE,
+            )?,
+            shape: parse_avatar_option(
+                query.shape.as_deref(),
+                DEFAULT_SHAPE,
+                INVALID_AVATAR_SHAPE_MESSAGE,
+            )?,
             format,
             size: query.size.unwrap_or(256),
             persist: query.persist.unwrap_or(false),
@@ -5090,7 +5181,14 @@ impl S3Storage {
 
         let region =
             std::env::var("HASHAVATAR_S3_REGION").unwrap_or_else(|_| "us-east-1".to_string());
-        let endpoint = std::env::var("HASHAVATAR_S3_ENDPOINT").ok();
+        let endpoint = std::env::var("HASHAVATAR_S3_ENDPOINT")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| validated_s3_endpoint(&value))
+            .transpose()
+            .map_err(|message| -> Box<dyn std::error::Error> {
+                format!("HASHAVATAR_S3_ENDPOINT: {message}").into()
+            })?;
         let force_path_style = std::env::var("HASHAVATAR_S3_PATH_STYLE")
             .ok()
             .map(|raw| matches!(raw.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
@@ -5120,6 +5218,7 @@ impl S3Storage {
             .await;
 
         let mut config_builder = S3ConfigBuilder::from(&shared_config);
+        config_builder.set_endpoint_url(None);
         if let Some(endpoint) = endpoint {
             config_builder = config_builder.endpoint_url(endpoint);
         }
@@ -5206,12 +5305,31 @@ impl HeaderName {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tower::ServiceExt as _;
 
     async fn response_text(response: Response) -> String {
         let body = axum::body::to_bytes(response.into_body(), 1024)
             .await
             .expect("response body");
         std::str::from_utf8(&body).expect("utf8 body").to_string()
+    }
+
+    async fn telemetry_request(app: &Router, body: String) -> Response {
+        let mut request = axum::http::Request::builder()
+            .method("POST")
+            .uri("/telemetry/click")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(axum::body::Body::from(body))
+            .expect("telemetry request");
+        request.extensions_mut().insert(ConnectInfo(
+            "127.0.0.1:8080"
+                .parse::<SocketAddr>()
+                .expect("peer address"),
+        ));
+        app.clone()
+            .oneshot(request)
+            .await
+            .expect("telemetry response")
     }
 
     fn test_avatar_request(format: AvatarRequestFormat) -> AvatarRequest {
@@ -5462,6 +5580,18 @@ mod tests {
     }
 
     #[test]
+    fn s3_endpoint_requires_https_except_loopback() {
+        assert!(validated_s3_endpoint("https://s3.example.com").is_ok());
+        assert!(validated_s3_endpoint("http://localhost:9000").is_ok());
+        assert!(validated_s3_endpoint("http://127.0.0.1:9000").is_ok());
+        assert!(validated_s3_endpoint("http://[::1]:9000").is_ok());
+        assert!(validated_s3_endpoint("http://s3.example.com").is_err());
+        assert!(validated_s3_endpoint("ftp://s3.example.com").is_err());
+        assert!(validated_s3_endpoint("https://user:secret@s3.example.com").is_err());
+        assert!(validated_s3_endpoint("https://s3.example.com?bucket=private").is_err());
+    }
+
+    #[test]
     fn s3_head_object_errors_are_not_collapsed_to_cache_miss() {
         let source = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"));
         let store_source = source
@@ -5638,7 +5768,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn telemetry_endpoints_are_rate_limited() {
+    async fn telemetry_rate_limit_runs_before_json_extraction() {
         let state = AppState {
             storage: None,
             trusted_proxies: TrustedProxies::default(),
@@ -5646,37 +5776,32 @@ mod tests {
             metrics: Metrics::default(),
             observability: Observability::disabled(),
         };
-        let peer_addr = ConnectInfo("127.0.0.1:8080".parse().expect("peer address"));
-        let headers = HeaderMap::new();
+        let app = app_router(state);
 
         for _ in 0..RateLimitRoute::Telemetry.limit() {
-            let response = telemetry_click(
-                State(state.clone()),
-                peer_addr,
-                headers.clone(),
-                Json(ClickTelemetryPayload {
-                    kind: "action".to_string(),
-                    target: "copy-url".to_string(),
-                    locale: "en-EU".to_string(),
-                }),
-            )
-            .await;
-            assert_eq!(response.status(), StatusCode::ACCEPTED);
+            let response = telemetry_request(&app, "{".to_string()).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         }
 
-        let response = telemetry_click(
-            State(state),
-            peer_addr,
-            headers,
-            Json(ClickTelemetryPayload {
-                kind: "action".to_string(),
-                target: "copy-url".to_string(),
-                locale: "en-EU".to_string(),
-            }),
-        )
-        .await;
+        let response = telemetry_request(&app, "{".to_string()).await;
 
         assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn request_bodies_are_limited_to_four_kibibytes() {
+        let state = AppState {
+            storage: None,
+            trusted_proxies: TrustedProxies::default(),
+            rate_limiter: RateLimiter::with_capacity(64),
+            metrics: Metrics::default(),
+            observability: Observability::disabled(),
+        };
+        let app = app_router(state);
+
+        let response = telemetry_request(&app, "x".repeat(MAX_REQUEST_BODY_BYTES + 1)).await;
+
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 
     #[tokio::test]
@@ -6343,6 +6468,15 @@ mod tests {
     }
 
     #[test]
+    fn script_json_escapes_javascript_line_separators() {
+        let escaped = json_script_string("line\u{2028}paragraph\u{2029}end", "fallback");
+
+        assert_eq!(escaped, r#""line\u2028paragraph\u2029end""#);
+        assert!(!preset_examples_json().contains('\u{2028}'));
+        assert!(!preset_examples_json().contains('\u{2029}'));
+    }
+
+    #[test]
     fn escape_html_attribute_handles_single_quotes() {
         assert_eq!(
             escape_html_attribute(r#"'"><tag>&"#),
@@ -6398,6 +6532,33 @@ mod tests {
         assert_eq!(
             client_ip(&HeaderMap::new(), mapped_peer, &TrustedProxies::default()),
             "198.51.100.10"
+        );
+    }
+
+    #[test]
+    fn ipv6_rate_limits_are_aggregated_to_prefix_64() {
+        let first = "2001:4860:4860:1234::1"
+            .parse::<IpAddr>()
+            .expect("first IPv6 address");
+        let second = "2001:4860:4860:1234:ffff::2"
+            .parse::<IpAddr>()
+            .expect("second IPv6 address");
+        let other_prefix = "2001:4860:4860:5678::1"
+            .parse::<IpAddr>()
+            .expect("other IPv6 prefix");
+
+        assert_eq!(rate_limit_ip_identity(first), "2001:4860:4860:1234::/64");
+        assert_eq!(
+            rate_limit_ip_identity(first),
+            rate_limit_ip_identity(second)
+        );
+        assert_ne!(
+            rate_limit_ip_identity(first),
+            rate_limit_ip_identity(other_prefix)
+        );
+        assert_eq!(
+            rate_limit_ip_identity("::1".parse().expect("loopback")),
+            "::1"
         );
     }
 
@@ -6618,6 +6779,29 @@ mod tests {
     }
 
     #[test]
+    fn drawing_helpers_saturate_out_of_bounds_coordinates() {
+        let mut image = RgbaImage::from_pixel(4, 4, Rgba([0, 0, 0, 0]));
+
+        draw_rect(
+            &mut image,
+            u32::MAX,
+            u32::MAX,
+            u32::MAX,
+            u32::MAX,
+            Rgba([255, 255, 255, 255]),
+        );
+        draw_circle(
+            &mut image,
+            i32::MAX,
+            i32::MAX,
+            1,
+            Rgba([255, 255, 255, 255]),
+        );
+
+        assert!(image.pixels().all(|pixel| *pixel == Rgba([0, 0, 0, 0])));
+    }
+
+    #[test]
     fn overlay_reports_out_of_bounds_composition() {
         let mut canvas = RgbaImage::from_pixel(16, 16, Rgba([0, 0, 0, 0]));
         let avatar = RgbaImage::from_pixel(8, 8, Rgba([255, 255, 255, 255]));
@@ -6706,6 +6890,68 @@ mod tests {
         .expect_err("non-webp format should be rejected");
 
         assert_eq!(error, INVALID_AVATAR_FORMAT_MESSAGE);
+    }
+
+    #[test]
+    fn avatar_request_rejects_unknown_style_values() {
+        assert_eq!(
+            parse_avatar_option(
+                Some("not-a-kind"),
+                AvatarKind::Cat,
+                INVALID_AVATAR_KIND_MESSAGE
+            )
+            .expect_err("unknown kind"),
+            INVALID_AVATAR_KIND_MESSAGE
+        );
+        assert_eq!(
+            parse_avatar_option(
+                Some("not-a-background"),
+                AvatarBackground::Themed,
+                INVALID_AVATAR_BACKGROUND_MESSAGE,
+            )
+            .expect_err("unknown background"),
+            INVALID_AVATAR_BACKGROUND_MESSAGE
+        );
+        assert_eq!(
+            parse_avatar_option(
+                Some("not-an-accessory"),
+                DEFAULT_ACCESSORY,
+                INVALID_AVATAR_ACCESSORY_MESSAGE,
+            )
+            .expect_err("unknown accessory"),
+            INVALID_AVATAR_ACCESSORY_MESSAGE
+        );
+        assert_eq!(
+            parse_avatar_option(
+                Some("not-a-color"),
+                DEFAULT_COLOR,
+                INVALID_AVATAR_COLOR_MESSAGE,
+            )
+            .expect_err("unknown color"),
+            INVALID_AVATAR_COLOR_MESSAGE
+        );
+        assert_eq!(
+            parse_avatar_option(
+                Some("not-an-expression"),
+                DEFAULT_EXPRESSION,
+                INVALID_AVATAR_EXPRESSION_MESSAGE,
+            )
+            .expect_err("unknown expression"),
+            INVALID_AVATAR_EXPRESSION_MESSAGE
+        );
+        assert_eq!(
+            parse_avatar_option(
+                Some("not-a-shape"),
+                DEFAULT_SHAPE,
+                INVALID_AVATAR_SHAPE_MESSAGE,
+            )
+            .expect_err("unknown shape"),
+            INVALID_AVATAR_SHAPE_MESSAGE
+        );
+        assert_eq!(
+            parse_avatar_option(Some(""), AvatarKind::Cat, INVALID_AVATAR_KIND_MESSAGE),
+            Ok(AvatarKind::Cat)
+        );
     }
 
     #[test]

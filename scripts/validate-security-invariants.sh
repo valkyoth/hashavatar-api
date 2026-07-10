@@ -39,6 +39,33 @@ grep -q 'MAX_NAMESPACE_COMPONENT_BYTES' src/main.rs \
     || fail "namespace component byte limit is missing"
 grep -q 'fn is_valid_namespace_component' src/main.rs \
     || fail "path-safe namespace validation is missing"
+grep -q 'fn rate_limit_ip_identity' src/main.rs \
+    || fail "IPv6 rate-limit prefix aggregation is missing"
+grep -q 'DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES)' src/main.rs \
+    || fail "request body limit is missing"
+grep -q 'async fn telemetry_gate' src/main.rs \
+    || fail "pre-extraction telemetry rate limit is missing"
+grep -q 'default-https-client' Cargo.toml \
+    || fail "AWS HTTPS client feature is missing"
+grep -q 'reqwest-rustls' Cargo.toml \
+    || fail "OTLP HTTPS client feature is missing"
+if ! awk '
+    /^FROM / {
+        seen = 1
+        if ($2 !~ /@sha256:[0-9a-f]{64}$/) invalid = 1
+    }
+    END { exit !(seen && !invalid) }
+' Dockerfile; then
+    fail "container base images must be pinned by digest"
+fi
+if ! awk '
+    /^[[:space:]]*uses:/ {
+        split($2, action, "@")
+        if (length(action[2]) != 40) exit 1
+    }
+' .github/workflows/*.yml; then
+    fail "GitHub actions must be pinned to full commit SHAs"
+fi
 
 internal_error_body="$(
     awk '
@@ -80,6 +107,14 @@ grep -q 'etag_uses_full_sha256_digest' src/main.rs \
     || fail "full ETag digest regression test is missing"
 grep -q 'metrics_generation_duration_saturates_at_u64_max' src/main.rs \
     || fail "metrics duration saturation regression test is missing"
+grep -q 'ipv6_rate_limits_are_aggregated_to_prefix_64' src/main.rs \
+    || fail "IPv6 rate-limit aggregation regression test is missing"
+grep -q 'telemetry_rate_limit_runs_before_json_extraction' src/main.rs \
+    || fail "pre-extraction telemetry rate-limit regression test is missing"
+grep -q 'request_bodies_are_limited_to_four_kibibytes' src/main.rs \
+    || fail "request body limit regression test is missing"
+grep -q 's3_endpoint_requires_https_except_loopback' src/main.rs \
+    || fail "S3 endpoint transport regression test is missing"
 
 if [ -e .github/workflows/codeql.yml ] || [ -e .github/codeql/codeql-config.yml ]; then
     fail "CodeQL default setup is enabled in GitHub; remove repo-level advanced CodeQL configuration"

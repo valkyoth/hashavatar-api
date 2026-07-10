@@ -1,10 +1,10 @@
 # Contributing
 
-Thanks for helping improve `hashavatar`.
+Thanks for helping improve `hashavatar-api`.
 
 ## Development
 
-Use Rust 1.95 or newer.
+Use Rust 1.97 or newer.
 
 ```bash
 scripts/checks.sh
@@ -19,4 +19,7 @@ scripts/checks.sh
 
 ## Visual Stability
 
-`hashavatar` is deterministic. Changes to shape generation, colors, hashing, randomization, or encoder behavior can affect downstream users. When a change intentionally affects output, document it in the changelog.
+The API delegates deterministic rendering to `hashavatar`. Changes to request
+normalization, namespace handling, cache keys, style options, or encoder
+selection can still affect downstream users. Document intentional output or URL
+contract changes in the release notes.

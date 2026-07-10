@@ -155,6 +155,7 @@ response headers.
 | Maximum namespace tenant | `64` ASCII path-safe bytes |
 | Maximum namespace style version | `64` ASCII path-safe bytes |
 | Maximum renderer identity input | `1024` bytes |
+| Maximum request body | `4KiB` |
 | Rate-limit buckets | `65,536` |
 | Avatar render timeout | `3s` |
 | Storage operation timeout | `5s` |
@@ -235,13 +236,15 @@ Privacy-preserving OpenTelemetry metrics:
 - `HASHAVATAR_OTLP` set to `enabled` to export OTLP metrics; defaults to
   disabled
 - `HASHAVATAR_OTLP_ENDPOINT` for the OTLP metrics endpoint, for example
-  `http://otel-collector:4318/v1/metrics`
+  `https://otel.example.com/v1/metrics`; plaintext HTTP is accepted only for a
+  loopback-local collector
 
 Object storage:
 
 - `HASHAVATAR_S3_BUCKET`
 - `HASHAVATAR_S3_REGION`
-- `HASHAVATAR_S3_ENDPOINT`
+- `HASHAVATAR_S3_ENDPOINT`; custom remote endpoints must use HTTPS, while
+  loopback-local development endpoints may use HTTP
 - `HASHAVATAR_S3_PATH_STYLE`
 - `HASHAVATAR_S3_PREFIX`
 - `HASHAVATAR_S3_PRESIGN_TTL_SECONDS` clamped to `60..=604800`
@@ -250,7 +253,9 @@ Object storage:
 addresses and CIDR ranges. Forwarded client IP headers are ignored unless the
 direct peer address matches this allowlist. Keep this allowlist limited to
 proxies that overwrite or correctly append client IP headers; rate-limit state
-is intentionally sized for the real client IP space of the deployment.
+is intentionally sized for the real client IP space of the deployment. IPv6
+clients are grouped by `/64` for rate limiting so rotating interface addresses
+does not create a fresh quota.
 
 Do not proxy `/metrics` from a public listener. The endpoint is intended for
 local scraping only; a same-host reverse proxy can make the loopback peer check

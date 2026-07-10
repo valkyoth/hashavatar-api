@@ -20,7 +20,7 @@ target_port = 443
 max_request_header_bytes = "64KiB"
 max_uri_bytes = "8KiB"
 max_request_headers = 100
-max_request_body_bytes = "16MiB"
+max_request_body_bytes = "4KiB"
 
 [logging]
 level = "info"

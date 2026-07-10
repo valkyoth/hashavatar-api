@@ -21,8 +21,13 @@ loopback peer, but a same-host reverse proxy connects from loopback and would
 make metrics public if explicitly forwarded.
 
 The app container is hardened for the expected runtime shape: read-only root
-filesystem, no new privileges, all Linux capabilities dropped, and a small
-`/tmp` tmpfs for temporary runtime files.
+filesystem, no new privileges, all Linux capabilities dropped, a small `/tmp`
+tmpfs, and CPU, memory, PID, and file-descriptor ceilings. Fluxheim has separate
+resource ceilings. Tune these values with production load tests rather than
+removing them.
+
+Both Fluxheim and Axum reject request bodies larger than `4KiB`; the public API
+uses request bodies only for small, bounded telemetry events.
 
 ## Optional OpenTelemetry
 
@@ -31,7 +36,7 @@ OTLP collector or observability backend ready:
 
 ```bash
 HASHAVATAR_OTLP=enabled \
-HASHAVATAR_OTLP_ENDPOINT=http://otel-collector:4318/v1/metrics \
+HASHAVATAR_OTLP_ENDPOINT=https://otel.example.com/v1/metrics \
 podman compose -f deploy/podman-compose.yml up -d --build
 ```
 

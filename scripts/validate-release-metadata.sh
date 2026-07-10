@@ -11,7 +11,7 @@ toolchain_version="$(
     sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml | sed -n '1p'
 )"
 docker_rust_image="$(
-    sed -n 's/^FROM rust:\([^ ]*\) AS build$/\1/p' Dockerfile | sed -n '1p'
+    sed -n 's/^FROM rust:\([^ ]*\) AS build$/\1/p' Dockerfile | cut -d@ -f1 | sed -n '1p'
 )"
 lock_version="$(
     awk '

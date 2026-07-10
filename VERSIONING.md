@@ -1,6 +1,6 @@
 # Versioning Policy
 
-`hashavatar` is intended to be safe for deterministic avatar URLs.
+`hashavatar-api` is intended to be safe for deterministic avatar URLs.
 
 ## Stable Rendering Contract
 
@@ -12,6 +12,10 @@ Within a major release line, the project aims to keep avatar output stable for t
 - `id`
 - `kind`
 - `background`
+- `accessory`
+- `color`
+- `expression`
+- `shape`
 - `format`
 - `size`
 
@@ -22,20 +26,20 @@ That means an application can cache and embed avatar URLs without expecting sile
 Visual output may change when:
 
 - you intentionally change `style_version`
-- you intentionally change `algorithm`
 - you intentionally change `tenant`
-- you adopt a new major crate release with documented breaking visual changes
+- the service adopts a renderer release with documented visual changes
 - a narrowly scoped rendering bug fix is required and documented
 
 ## Recommended Production Strategy
 
 - treat `tenant` as your product or environment namespace
 - treat `style_version` as your avatar rollout version, for example `v2`
-- treat `algorithm` as part of the avatar identity contract when comparing
-  SHA-512, BLAKE3, and XXH3 output modes
+- keep `algorithm=sha512` and `format=webp`; the public API rejects other modes
 - email-shaped identifiers are accepted, but stable internal ids or one-way
   hashes are preferred when you want less personal data in URL logs
 
 ## Regression Protection
 
-The repository includes golden fingerprint regression tests. Those tests are meant to catch unintended visual changes before release.
+The repository tests renderer output, request normalization, and cache-key
+components. The release gates also exercise the published renderer through the
+local service and Wolfi container.

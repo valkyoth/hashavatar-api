@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes are expected for the latest published `1.0.x` release.
+Security fixes are expected for the latest published `1.1.x` release.
 
 ## Reporting a Vulnerability
 
@@ -17,7 +17,7 @@ If GitHub advisories are unavailable, open a minimal public issue that asks for 
 Relevant security issues include:
 
 - panics or resource exhaustion from untrusted avatar parameters
-- unsafe SVG or output encoding behavior
+- unsafe image output or encoding behavior
 - vulnerable dependency paths
 - license or provenance concerns that affect safe redistribution
 

@@ -41,17 +41,37 @@ PY
 
 if [ "$BUILD_RELEASE" = "1" ]; then
     cargo build --quiet --release
-    PORT="$port" PUBLIC_WEBSITE_HOST=127.0.0.1 "$ROOT_DIR/target/release/hashavatar-api" > "$TMP_DIR/server.log" 2>&1 &
+    PORT="$port" \
+        PUBLIC_WEBSITE_HOST=127.0.0.1 \
+        HASHAVATAR_S3_BUCKET=smoke-test \
+        HASHAVATAR_S3_REGION=us-east-1 \
+        HASHAVATAR_S3_ENDPOINT=http://127.0.0.1:9 \
+        HASHAVATAR_S3_PATH_STYLE=true \
+        AWS_ACCESS_KEY_ID=smoke-test \
+        AWS_SECRET_ACCESS_KEY=smoke-test \
+        AWS_EC2_METADATA_DISABLED=true \
+        "$ROOT_DIR/target/release/hashavatar-api" > "$TMP_DIR/server.log" 2>&1 &
 else
-    PORT="$port" PUBLIC_WEBSITE_HOST=127.0.0.1 cargo run --quiet > "$TMP_DIR/server.log" 2>&1 &
+    PORT="$port" \
+        PUBLIC_WEBSITE_HOST=127.0.0.1 \
+        HASHAVATAR_S3_BUCKET=smoke-test \
+        HASHAVATAR_S3_REGION=us-east-1 \
+        HASHAVATAR_S3_ENDPOINT=http://127.0.0.1:9 \
+        HASHAVATAR_S3_PATH_STYLE=true \
+        AWS_ACCESS_KEY_ID=smoke-test \
+        AWS_SECRET_ACCESS_KEY=smoke-test \
+        AWS_EC2_METADATA_DISABLED=true \
+        cargo run --quiet > "$TMP_DIR/server.log" 2>&1 &
 fi
 HASHAVATAR_API_PID=$!
 
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+attempt=0
+while [ "$attempt" -lt 150 ]; do
     status="$(curl -sS -o "$TMP_DIR/health.json" -w '%{http_code}' "http://127.0.0.1:$port/healthz" 2>/dev/null || true)"
     if [ "$status" = "200" ]; then
         break
     fi
+    attempt=$((attempt + 1))
     sleep 0.2
 done
 
@@ -114,6 +134,29 @@ if [ "$bad_algorithm_status" != "400" ]; then
     exit 1
 fi
 grep -q 'unsupported hash algorithm: expected sha512' "$TMP_DIR/bad-algorithm.txt"
+
+bad_style_status="$(
+    curl -sS -o "$TMP_DIR/bad-style.txt" -w '%{http_code}' \
+        "http://127.0.0.1:$port/v1/avatar?id=cat@hashavatar.app&kind=not-a-kind&format=webp"
+)"
+if [ "$bad_style_status" != "400" ]; then
+    echo "local smoke failed: invalid kind returned $bad_style_status, expected 400" >&2
+    exit 1
+fi
+grep -q 'unsupported avatar kind' "$TMP_DIR/bad-style.txt"
+
+large_body_status="$(
+    head -c 4097 /dev/zero | tr '\000' x | curl -sS \
+        -H 'content-type: application/json' \
+        --data-binary @- \
+        -o "$TMP_DIR/large-body.txt" \
+        -w '%{http_code}' \
+        "http://127.0.0.1:$port/telemetry/click"
+)"
+if [ "$large_body_status" != "413" ]; then
+    echo "local smoke failed: oversized body returned $large_body_status, expected 413" >&2
+    exit 1
+fi
 
 bad_status="$(
     curl -sS -o "$TMP_DIR/bad-tenant.txt" -w '%{http_code}' \

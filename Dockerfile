@@ -1,4 +1,4 @@
-FROM rust:1.96 AS build
+FROM rust:1.97 AS build
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./

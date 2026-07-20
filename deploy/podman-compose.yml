@@ -33,7 +33,7 @@ services:
       - hashavatar
 
   fluxheim:
-    image: ghcr.io/valkyoth/fluxheim:v1.7.6-wolfi@sha256:462b98287a0eb0e405cd302b818c5bab0507e18845191eb0abe3732bfd953477
+    image: ghcr.io/valkyoth/fluxheim:v1.7.12-wolfi@sha256:453e4eb0d658c60e35fa4f8257bd1435547fb5fbec9cc32896ea7614f7711d50
     container_name: hashavatar-fluxheim
     restart: unless-stopped
     cpus: 2.0

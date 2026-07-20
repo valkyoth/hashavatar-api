@@ -81,9 +81,10 @@ Intentionally external:
 | --- | --- |
 | Website license | `EUPL-1.2` |
 | Renderer crate | crates.io `hashavatar 1.1.2` |
-| MSRV | Rust `1.97.0` |
+| Pinned Rust toolchain | Rust `1.97.1` |
+| MSRV | Rust `1.97` |
 | Runtime container | Wolfi |
-| Gateway example | Fluxheim `1.7.6` Wolfi image, digest-pinned |
+| Gateway example | Fluxheim `1.7.12` Wolfi image, digest-pinned |
 | HTTP framework | `axum` |
 | Object storage | Optional S3-compatible backend |
 | Rate limiter | Bounded LRU map |
@@ -204,7 +205,8 @@ The recommended production strategy is:
 
 ## Running Locally
 
-Requires Rust `1.97.0` or newer.
+The pinned development and release toolchain is Rust `1.97.1`; the Cargo
+manifest declares Rust `1.97` as the minimum supported toolchain series.
 
 ```bash
 cargo run

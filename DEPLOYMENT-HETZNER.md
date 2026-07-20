@@ -75,7 +75,7 @@ podman-compose up -d --build
 ## Notes
 
 - Fluxheim listens publicly on `80` and `443`
-- the Compose example pins the Fluxheim `1.7.6` Wolfi image by digest
+- the Compose example pins the Fluxheim `1.7.12` Wolfi image by digest
 - the Rust app stays internal on port `8080`
 - both containers have CPU, memory, PID, and file-descriptor ceilings
 - `HASHAVATAR_TRUSTED_PROXIES` is set to the private Compose network so the app

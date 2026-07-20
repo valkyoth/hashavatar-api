@@ -6,7 +6,7 @@ It runs two containers on one private network:
 - `hashavatar`: builds this repository with the Wolfi runtime image from
   `../Dockerfile` and listens internally on port `8080`.
 - `fluxheim`: runs the digest-pinned
-  `ghcr.io/valkyoth/fluxheim:v1.7.6-wolfi` image, publishes ports
+  `ghcr.io/valkyoth/fluxheim:v1.7.12-wolfi` image, publishes ports
   `80` and `443`, terminates TLS, redirects HTTP to HTTPS, redirects
   `www.hashavatar.app` to `hashavatar.app`, and proxies traffic to
   `hashavatar:8080`.

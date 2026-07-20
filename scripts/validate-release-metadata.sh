@@ -10,6 +10,9 @@ cargo_rust_version="$(
 toolchain_version="$(
     sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml | sed -n '1p'
 )"
+toolchain_rust_version="$(
+    printf '%s\n' "$toolchain_version" | awk -F. '{ print $1 "." $2 }'
+)"
 docker_rust_image="$(
     sed -n 's/^FROM rust:\([^ ]*\) AS build$/\1/p' Dockerfile | cut -d@ -f1 | sed -n '1p'
 )"
@@ -34,13 +37,13 @@ if [ -z "$cargo_rust_version" ]; then
     exit 1
 fi
 
-if [ "$toolchain_version" != "$cargo_rust_version.0" ]; then
-    echo "release metadata: rust-toolchain.toml channel $toolchain_version does not match Cargo.toml rust-version $cargo_rust_version" >&2
+if [ "$toolchain_rust_version" != "$cargo_rust_version" ]; then
+    echo "release metadata: rust-toolchain.toml channel $toolchain_version does not satisfy Cargo.toml rust-version $cargo_rust_version" >&2
     exit 1
 fi
 
-if [ "$docker_rust_image" != "$cargo_rust_version" ]; then
-    echo "release metadata: Dockerfile Rust image $docker_rust_image does not match Cargo.toml rust-version $cargo_rust_version" >&2
+if [ "$docker_rust_image" != "$toolchain_version" ]; then
+    echo "release metadata: Dockerfile Rust image $docker_rust_image does not match rust-toolchain.toml channel $toolchain_version" >&2
     exit 1
 fi
 

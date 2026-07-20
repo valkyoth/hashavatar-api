@@ -1130,9 +1130,9 @@ dependencies = [
 
 [[package]]
 name = "hashavatar"
-version = "1.1.2"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a7192a3eaa08644dc67055620b7db5f0ceba0cf408589c034cb7e202a4ad814"
+checksum = "d16d3f02b9dad39e5c26a3bda62c01420424cd9b35599ec49a2ce35dc29f16e5"
 dependencies = [
  "image",
  "palette",
@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "hashavatar-website"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "aws-config",
  "aws-sdk-s3",
@@ -2296,15 +2296,15 @@ dependencies = [
 
 [[package]]
 name = "sanitization"
-version = "1.2.5"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c92c75202f3f884d540d83c61b14a9e3787542ced35cd5d7842d075c7475c0b1"
+checksum = "1811b2a04b8eca8d87ef9cdafec4d6899cefee224e1977ffd0e2c1e45b444c3e"
 
 [[package]]
 name = "sanitization-crypto-interop"
-version = "1.2.5"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5dee9ee91c059b64b86b633d3dc8b287a9d0b827ba452a49e89d7d9934476153"
+checksum = "15c2cc197715849f1585d220129687a722f6ee001b1d439117b337642f20c1ee"
 dependencies = [
  "sanitization",
  "sha2 0.11.0",

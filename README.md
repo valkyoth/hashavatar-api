@@ -17,7 +17,7 @@ audit, SBOM, reproducibility, smoke, and GitHub CodeQL default setup checks.
 
 ## Current Status
 
-The current website version is `1.1.2`.
+The current website version is `1.2.0`.
 
 Implemented now:
 
@@ -31,7 +31,7 @@ Implemented now:
 - Namespace-aware tenant and style-version parameters.
 - SHA-512 identity hashing.
 - WebP avatar responses.
-- Avatar families from `hashavatar 1.1.2`: `cat`, `dog`, `robot`, `fox`,
+- Avatar families from `hashavatar 1.2.0`: `cat`, `dog`, `robot`, `fox`,
   `alien`, `monster`, `ghost`, `slime`, `bird`, `wizard`, `skull`, `paws`,
   `planet`, `rocket`, `mushroom`, `cactus`, `frog`, `panda`, `cupcake`,
   `pizza`, `icecream`, `octopus`, `knight`, `bear`, `penguin`, `dragon`,
@@ -80,7 +80,7 @@ Intentionally external:
 | Area | Status |
 | --- | --- |
 | Website license | `EUPL-1.2` |
-| Renderer crate | crates.io `hashavatar 1.1.2` |
+| Renderer crate | crates.io `hashavatar 1.2.0` |
 | Pinned Rust toolchain | Rust `1.97.1` |
 | MSRV | Rust `1.97` |
 | Runtime container | Wolfi |

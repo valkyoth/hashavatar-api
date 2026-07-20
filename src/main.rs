@@ -18,10 +18,9 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use hashavatar::{
-    AVATAR_STYLE_VERSION, AvatarAccessory, AvatarBackground, AvatarColor, AvatarExpression,
-    AvatarIdentityOptions, AvatarKind, AvatarNamespace, AvatarOptions, AvatarOutputFormat,
-    AvatarShape, AvatarSpec, AvatarStyleOptions, encode_avatar_style_with_identity_options,
-    render_avatar_for_namespace,
+    AVATAR_STYLE_VERSION, AvatarAccessory, AvatarBackground, AvatarBuilder, AvatarColor,
+    AvatarExpression, AvatarKind, AvatarNamespace, AvatarOptions, AvatarOutputFormat, AvatarShape,
+    AvatarSpec, AvatarStyleOptions, SemanticEncodedAssetKey, render_avatar_for_namespace,
 };
 use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use ipnet::IpNet;
@@ -1969,8 +1968,11 @@ fn avatar_telemetry_style_from_payload(
         AvatarExpression::from_str(&payload.expression).map_err(|_| "invalid telemetry event")?;
     let shape = AvatarShape::from_str(&payload.shape).map_err(|_| "invalid telemetry event")?;
 
-    if !kind.supports_face_layers() {
+    let capabilities = kind.capabilities();
+    if !capabilities.supports_accessories() {
         accessory = DEFAULT_ACCESSORY;
+    }
+    if !capabilities.supports_expressions() {
         expression = DEFAULT_EXPRESSION;
     }
 
@@ -2595,7 +2597,7 @@ async fn serve_avatar_link(state: AppState, request: AvatarRequest) -> Response 
                 signed_url: signed.signed_url,
                 expires_in_seconds: storage.presign_ttl.as_secs(),
                 content_type: asset.content_type.to_string(),
-                cache_key: sha256_hex(&asset.cache_key),
+                cache_key: sha256_hex(&asset.cache_key.to_hex()),
             }),
         )
             .into_response(),
@@ -2633,37 +2635,17 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
 
     let spec = AvatarSpec::new(request.size, request.size, 0)
         .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())?;
-    let style = request.style_options();
-    let namespace = AvatarNamespace::new(&request.namespace_tenant, &request.namespace_style)
-        .map_err(|_| INVALID_NAMESPACE_MESSAGE.to_string())?;
-    let identity_options = AvatarIdentityOptions::new(namespace);
-    let accessory = request.effective_accessory();
-    let expression = request.effective_expression();
-    let identity_cache_key = sha256_hex(identity);
-    let cache_key = format!(
-        "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
-        request.namespace_tenant,
-        request.namespace_style,
-        DEFAULT_HASH_ALGORITHM,
-        identity_cache_key,
-        request.kind,
-        request.background,
-        accessory,
-        request.color,
-        expression,
-        request.shape,
-        request.format,
-        request.size
-    );
-
-    let body = encode_avatar_style_with_identity_options(
-        spec,
-        identity_options,
-        identity,
-        AvatarOutputFormat::WebP,
-        style,
-    )
-    .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())?;
+    let builder = AvatarBuilder::for_id(identity)
+        .spec(spec)
+        .namespace(&request.namespace_tenant, &request.namespace_style)
+        .style(request.style_options())
+        .strict_style_validation();
+    let cache_key = builder
+        .encoded_asset_key(AvatarOutputFormat::WebP)
+        .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())?;
+    let body = builder
+        .encode(AvatarOutputFormat::WebP)
+        .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())?;
 
     Ok(AvatarAsset {
         body,
@@ -2694,8 +2676,8 @@ fn cache_headers(etag: &str) -> HeaderMap {
     headers
 }
 
-fn etag_for(cache_key: &str) -> String {
-    format!("\"{}\"", sha256_hex(cache_key))
+fn etag_for(cache_key: &SemanticEncodedAssetKey) -> String {
+    format!("\"{}\"", sha256_hex(&cache_key.to_hex()))
 }
 
 fn sha256_hex(input: &str) -> String {
@@ -3401,7 +3383,7 @@ fn kind_options_html(selected: AvatarKind) -> String {
                 r#"<option value="{value}" data-identity="{value}@hashavatar.app" data-supports-layers="{supports_layers}"{selected}>{label}</option>"#,
                 value = kind.as_str(),
                 label = avatar_kind_label(kind),
-                supports_layers = kind.supports_face_layers(),
+                supports_layers = kind.capabilities().supports_accessories(),
                 selected = selected_attr(kind == selected),
             )
         })
@@ -5123,7 +5105,7 @@ impl AvatarRequest {
     }
 
     fn effective_accessory(&self) -> AvatarAccessory {
-        if self.kind.supports_face_layers() {
+        if self.kind.capabilities().supports_accessories() {
             self.accessory
         } else {
             DEFAULT_ACCESSORY
@@ -5131,7 +5113,7 @@ impl AvatarRequest {
     }
 
     fn effective_expression(&self) -> AvatarExpression {
-        if self.kind.supports_face_layers() {
+        if self.kind.capabilities().supports_expressions() {
             self.expression
         } else {
             DEFAULT_EXPRESSION
@@ -5153,7 +5135,7 @@ impl AvatarRequest {
 struct AvatarAsset {
     body: Vec<u8>,
     content_type: &'static str,
-    cache_key: String,
+    cache_key: SemanticEncodedAssetKey,
     object_key: String,
 }
 
@@ -6142,7 +6124,9 @@ mod tests {
         assert!(source.contains("async fn serve_avatar_link("));
         assert!(serve_avatar_link_source.contains("object_key: signed.object_key"));
         assert!(serve_avatar_link_source.contains("signed_url: signed.signed_url"));
-        assert!(serve_avatar_link_source.contains("cache_key: sha256_hex(&asset.cache_key)"));
+        assert!(
+            serve_avatar_link_source.contains("cache_key: sha256_hex(&asset.cache_key.to_hex())")
+        );
         assert!(!serve_avatar_link_source.contains("cache_key: asset.cache_key"));
     }
 
@@ -6494,7 +6478,10 @@ mod tests {
 
     #[test]
     fn etag_uses_full_sha256_digest() {
-        let etag = etag_for("example-cache-key");
+        let cache_key = AvatarBuilder::for_id("etag@example.com")
+            .encoded_asset_key(AvatarOutputFormat::WebP)
+            .expect("semantic cache key should derive");
+        let etag = etag_for(&cache_key);
         let raw = etag.trim_matches('"');
 
         assert_eq!(etag.len(), 66);
@@ -6832,7 +6819,7 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_webp_with_hashavatar_1_1_2() {
+    fn build_avatar_asset_renders_webp_with_hashavatar_1_2_0() {
         let request = test_avatar_request(AvatarRequestFormat::Webp);
         let asset = build_avatar_asset(&request).expect("webp avatar should render");
 
@@ -6845,13 +6832,15 @@ mod tests {
         let mut request = test_avatar_request(AvatarRequestFormat::Webp);
         request.identity = "user:cat:themed:webp".to_string();
         let asset = build_avatar_asset(&request).expect("avatar should render");
+        let mut other_request = request.clone();
+        other_request.identity = "another-user:cat:themed:webp".to_string();
+        let other_asset = build_avatar_asset(&other_request).expect("avatar should render");
 
-        assert!(
-            asset
-                .cache_key
-                .contains(&sha256_hex("user:cat:themed:webp"))
-        );
-        assert!(!asset.cache_key.contains("user:cat:themed:webp"));
+        let cache_key = asset.cache_key.to_hex();
+        assert_eq!(cache_key.len(), 64);
+        assert!(cache_key.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert!(!cache_key.contains("user:cat:themed:webp"));
+        assert_ne!(asset.cache_key, other_asset.cache_key);
     }
 
     #[test]

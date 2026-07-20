@@ -1,6 +1,6 @@
 [package]
 name = "hashavatar-website"
-version = "1.1.2"
+version = "1.2.0"
 edition = "2024"
 rust-version = "1.97"
 description = "Demo website for the hashavatar Rust crate"
@@ -11,7 +11,7 @@ homepage = "https://hashavatar.app"
 documentation = "https://github.com/valkyoth/hashavatar-website"
 
 [dependencies]
-hashavatar = { version = "1.1.2", path = "../hashavatar" }
+hashavatar = { version = "1.2.0", path = "../hashavatar", default-features = false }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "query", "json"] }
 getrandom = { version = "0.4.3", default-features = false }
 ipnet = { version = "2.12.0", default-features = false }

@@ -20,6 +20,7 @@ is tagged.
 - Replaced the website's manually assembled cache identity with the renderer's
   typed semantic WebP asset key.
 - Preserved the existing public URL parameters and S3 object-key layout.
+- Updated Tokio to `1.53.1` and `taiki-e/install-action` to `v2.84.0`.
 
 ## Verification
 

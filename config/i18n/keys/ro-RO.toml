@@ -70,7 +70,7 @@ style_layer_note = "Accessory și expression layers se aplică familiilor charac
 signed_storage_links = "Linkuri De Stocare Semnate"
 signed_storage_links_text = "Dacă acest deployment are object storage configurat, cere un presigned storage link de la /v1/avatar/link. Acel endpoint stochează generated object și returnează JSON cu signed URL, object key și hashed cache key. Răspunsurile standard de avatar nu expun signed-link metadata în response headers."
 open_source = "Open Source"
-open_source_text = "Sursa site-ului public se află în API repository, iar reusable avatar renderer este publicat pe crates.io."
+open_source_text = "Sursa site-ului public se află în GitHub repository, iar reusable avatar renderer este publicat pe crates.io."
 
 [pages.docs]
 title = "Documentație"
@@ -132,7 +132,7 @@ logging_text = "În funcție de deployment, infrastructure components precum ngi
 avoid = "Ce Să Eviți Să Trimiți"
 avoid_text = "Email-shaped identifiers sunt acceptați pentru compatibility, dar URLs pot apărea în infrastructure logs. Trimite stable internal id sau one-way application hash când vrei să eviți personal data în request URL."
 repository = "Repository Și Crate"
-repository_text = "Poți inspecta implementation în public API repository și reusable avatar renderer în Rust crate."
+repository_text = "Poți inspecta implementation în public GitHub repository și reusable avatar renderer în Rust crate."
 translations = "Notă despre traduceri"
 translations_text = "Traducerile site-ului sunt asistate de AI și realizate cu cel mai bun efort. Dacă vedeți formulări care ar trebui îmbunătățite, contribuțiile pe GitHub sunt binevenite."
 translations_link = "Îmbunătățiți traducerile"

@@ -1,10 +1,10 @@
-# hashavatar-api 1.0.0 Release Notes
+# hashavatar-website 1.0.0 Release Notes
 
 Status: released
 
 ## Summary
 
-`1.0.0` was the first stable release of the hashavatar API and demo service.
+`1.0.0` was the first stable release of the hashavatar demo website and avatar endpoints.
 
 These notes are reconstructed from the tag and commit history.
 

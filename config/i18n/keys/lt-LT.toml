@@ -70,7 +70,7 @@ style_layer_note = "Aksesuarų ir išraiškų sluoksniai taikomi character-style
 signed_storage_links = "Pasirašytos Saugyklos Nuorodos"
 signed_storage_links_text = "Jei šiame deployment sukonfigūruota object storage, prašykite presigned storage link iš /v1/avatar/link. Šis endpoint išsaugo sugeneruotą objektą ir grąžina JSON su signed URL, object key ir hashed cache key. Standartiniai avataro atsakymai response headers nepateikia signed-link metadata."
 open_source = "Atvirasis Kodas"
-open_source_text = "Viešos svetainės source yra API repository, o reusable avatar renderer publikuojamas crates.io."
+open_source_text = "Viešos svetainės source yra GitHub repository, o reusable avatar renderer publikuojamas crates.io."
 
 [pages.docs]
 title = "Dokumentacija"
@@ -132,7 +132,7 @@ logging_text = "Priklausomai nuo deployment, infrastructure components, tokie ka
 avoid = "Ko Geriau Nesiųsti"
 avoid_text = "Email-shaped identifiers priimami dėl compatibility, bet URLs gali patekti į infrastructure logs. Siųskite stable internal id arba one-way application hash, jei norite išvengti personal data request URL."
 repository = "Saugykla ir Crate"
-repository_text = "Implementation galite peržiūrėti public API repository, o reusable avatar renderer - Rust crate."
+repository_text = "Implementation galite peržiūrėti public GitHub repository, o reusable avatar renderer - Rust crate."
 translations = "Pastaba apie vertimus"
 translations_text = "Svetainės vertimai yra parengti padedant DI ir geriausiomis pastangomis. Jei matote tekstą, kurį reikėtų patobulinti, indėlis GitHub platformoje laukiamas."
 translations_link = "Tobulinti vertimus"

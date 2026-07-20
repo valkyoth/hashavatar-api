@@ -70,7 +70,7 @@ style_layer_note = "تنطبق accessory وexpression layers على character-st
 signed_storage_links = "روابط التخزين الموقّعة"
 signed_storage_links_text = "إذا كان هذا deployment يحتوي على object storage معد، فاطلب presigned storage link من /v1/avatar/link. يخزّن ذلك endpoint الكائن generated object ويعيد JSON يحتوي على signed URL وobject key وhashed cache key. لا تعرض avatar responses العادية signed-link metadata في response headers."
 open_source = "مفتوح المصدر"
-open_source_text = "مصدر الموقع العام موجود في API repository، ومحرك reusable avatar renderer منشور على crates.io."
+open_source_text = "مصدر الموقع العام موجود في GitHub repository، ومحرك reusable avatar renderer منشور على crates.io."
 
 [pages.docs]
 title = "التوثيق"
@@ -132,7 +132,7 @@ logging_text = "بحسب deployment، قد تحتفظ infrastructure components 
 avoid = "ما ينبغي تجنب إرساله"
 avoid_text = "تُقبل email-shaped identifiers لأجل compatibility، لكن URLs قد تظهر في infrastructure logs. أرسل stable internal id أو one-way application hash عندما تريد تجنب وضع personal data في request URL."
 repository = "Repository وCrate"
-repository_text = "يمكنك مراجعة implementation في public API repository ومحرك reusable avatar renderer في Rust crate."
+repository_text = "يمكنك مراجعة implementation في public GitHub repository ومحرك reusable avatar renderer في Rust crate."
 translations = "ملاحظة حول الترجمات"
 translations_text = "ترجمات الموقع مدعومة بالذكاء الاصطناعي وتُقدَّم بأفضل جهد ممكن. إذا وجدت صياغة يمكن تحسينها، فنرحب بالمساهمات على GitHub."
 translations_link = "تحسين الترجمات"

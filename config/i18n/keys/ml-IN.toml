@@ -70,7 +70,7 @@ style_layer_note = "Accessory, expression layers character-style families ന്
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "ഈ deployment ൽ object storage configured ആണെങ്കിൽ /v1/avatar/link ൽ നിന്ന് presigned storage link ചോദിക്കുക. ആ endpoint generated object store ചെയ്ത് signed URL, object key, hashed cache key ഉള്ള JSON മടക്കി നൽകുന്നു. Standard avatar responses response headers ൽ signed-link metadata കാണിക്കില്ല."
 open_source = "Open Source"
-open_source_text = "Public site source API repository യിലുണ്ട്, reusable avatar renderer crates.io ൽ publish ചെയ്തിരിക്കുന്നു."
+open_source_text = "Public site source GitHub repository യിലുണ്ട്, reusable avatar renderer crates.io ൽ publish ചെയ്തിരിക്കുന്നു."
 
 [pages.docs]
 title = "ഡോക്യുമെന്റേഷൻ"
@@ -132,7 +132,7 @@ logging_text = "Deployment അനുസരിച്ച് nginx, Caddy, Cloudfla
 avoid = "അയയ്ക്കാതിരിക്കുന്നത് നല്ലത്"
 avoid_text = "Email-shaped identifiers compatibility ക്കായി സ്വീകരിക്കുന്നു, പക്ഷേ URLs infrastructure logs ൽ കാണാം. Request URL ൽ personal data ഒഴിവാക്കാൻ stable internal id അല്ലെങ്കിൽ one-way application hash അയയ്ക്കുക."
 repository = "Repository ഉം Crate ഉം"
-repository_text = "Implementation public API repository യിലും reusable avatar renderer Rust crate ലും പരിശോധിക്കാം."
+repository_text = "Implementation public GitHub repository യിലും reusable avatar renderer Rust crate ലും പരിശോധിക്കാം."
 translations = "വിവർത്തന കുറിപ്പ്"
 translations_text = "വെബ്‌സൈറ്റ് വിവർത്തനങ്ങൾ AI സഹായത്തോടെ, പരമാവധി ശ്രമത്തോടെ ചെയ്തതാണ്. മെച്ചപ്പെടുത്തേണ്ട വാചകം കണ്ടാൽ GitHub-ൽ സംഭാവനകൾ സ്വാഗതം ചെയ്യുന്നു."
 translations_link = "വിവർത്തനങ്ങൾ മെച്ചപ്പെടുത്തുക"

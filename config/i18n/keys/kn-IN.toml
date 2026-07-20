@@ -70,7 +70,7 @@ style_layer_note = "Accessory ಮತ್ತು expression layers character-style 
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "ಈ deployment ನಲ್ಲಿ object storage configured ಇದ್ದರೆ, /v1/avatar/link ನಿಂದ presigned storage link ಕೇಳಿ. ಆ endpoint generated object store ಮಾಡಿ signed URL, object key ಮತ್ತು hashed cache key ಇರುವ JSON ಮರಳಿ ಕೊಡುತ್ತದೆ. Standard avatar responses response headers ನಲ್ಲಿ signed-link metadata ತೋರಿಸುವುದಿಲ್ಲ."
 open_source = "Open Source"
-open_source_text = "Public site source API repository ನಲ್ಲಿ ಇದೆ ಮತ್ತು reusable avatar renderer crates.io ನಲ್ಲಿ publish ಆಗಿದೆ."
+open_source_text = "Public site source GitHub repository ನಲ್ಲಿ ಇದೆ ಮತ್ತು reusable avatar renderer crates.io ನಲ್ಲಿ publish ಆಗಿದೆ."
 
 [pages.docs]
 title = "ದಾಖಲೆಗಳು"
@@ -132,7 +132,7 @@ logging_text = "Deployment ಆಧರಿಸಿ nginx, Caddy, Cloudflare, hosting 
 avoid = "ಏನು ಕಳುಹಿಸದಿರುವುದು ಉತ್ತಮ"
 avoid_text = "Email-shaped identifiers compatibility ಗಾಗಿ ಸ್ವೀಕರಿಸಲಾಗುತ್ತವೆ, ಆದರೆ URLs infrastructure logs ನಲ್ಲಿ ಕಾಣಬಹುದು. Request URL ನಲ್ಲಿ personal data ತಪ್ಪಿಸಲು stable internal id ಅಥವಾ one-way application hash ಕಳುಹಿಸಿ."
 repository = "Repository ಮತ್ತು Crate"
-repository_text = "Implementation ಅನ್ನು public API repository ನಲ್ಲಿ ಮತ್ತು reusable avatar renderer ಅನ್ನು Rust crate ನಲ್ಲಿ ಪರಿಶೀಲಿಸಬಹುದು."
+repository_text = "Implementation ಅನ್ನು public GitHub repository ನಲ್ಲಿ ಮತ್ತು reusable avatar renderer ಅನ್ನು Rust crate ನಲ್ಲಿ ಪರಿಶೀಲಿಸಬಹುದು."
 translations = "ಅನುವಾದ ಸೂಚನೆ"
 translations_text = "ವೆಬ್‌ಸೈಟ್ ಅನುವಾದಗಳು AI ಸಹಾಯಿತವಾಗಿದ್ದು ಅತ್ಯುತ್ತಮ ಪ್ರಯತ್ನದ ಆಧಾರದ ಮೇಲೆ ಮಾಡಲಾಗಿದೆ. ಸುಧಾರಿಸಬೇಕಾದ ಪದಪ್ರಯೋಗ ಕಂಡರೆ GitHubನಲ್ಲಿ ಕೊಡುಗೆಗಳನ್ನು ಸ್ವಾಗತಿಸುತ್ತೇವೆ."
 translations_link = "ಅನುವಾದಗಳನ್ನು ಸುಧಾರಿಸಿ"

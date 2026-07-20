@@ -70,7 +70,7 @@ style_layer_note = "Accessory e expression layers s'apprìcanu a character-style
 signed_storage_links = "Link Storage Firmati"
 signed_storage_links_text = "Si chistu deployment havi object storage cunfiguratu, addumanna nu presigned storage link di /v1/avatar/link. Ddu endpoint sarva lu generated object e torna JSON cu signed URL, object key e hashed cache key. Li avatar responses standard nun espònunu signed-link metadata 'nta response headers."
 open_source = "Open Source"
-open_source_text = "Lu source dû situ pùbblicu è 'nta l'API repository e lu reusable avatar renderer è pubblicatu supra crates.io."
+open_source_text = "Lu source dû situ pùbblicu è 'nta l'GitHub repository e lu reusable avatar renderer è pubblicatu supra crates.io."
 
 [pages.docs]
 title = "Ducumentazzioni"
@@ -132,7 +132,7 @@ logging_text = "Secunnu lu deployment, infrastructure components comu nginx, Cad
 avoid = "Chi È Megghiu Nun Mannari"
 avoid_text = "Email-shaped identifiers sunnu accittati pi compatibility, ma URLs ponnu cumpariri 'nta infrastructure logs. Manna stable internal id o one-way application hash si voi evitari personal data 'nta request URL."
 repository = "Repository E Crate"
-repository_text = "Poi taliari l'implementation 'nta lu public API repository e lu reusable avatar renderer 'nta la Rust crate."
+repository_text = "Poi taliari l'implementation 'nta lu public GitHub repository e lu reusable avatar renderer 'nta la Rust crate."
 translations = "Nota supra i traduzzioni"
 translations_text = "I traduzzioni dû situ sunnu aiutati di AI e fatti cu lu megghiu sforzu. Si vidi paroli ca ponnu èssiri migghiurati, i cuntributi supra GitHub sunnu binvinuti."
 translations_link = "Migghiura i traduzzioni"

@@ -70,7 +70,7 @@ style_layer_note = "Az accessory és expression rétegek character-style család
 signed_storage_links = "Aláírt Tárhely Linkek"
 signed_storage_links_text = "Ha ebben a deploymentben object storage van konfigurálva, kérjen presigned storage linket a /v1/avatar/link endpointtól. Ez az endpoint eltárolja a generated objectet, és JSON-t ad vissza signed URL, object key és hashed cache key mezőkkel. A standard avatar responses nem teszik közzé a signed-link metadata értékeket response headers-ben."
 open_source = "Open Source"
-open_source_text = "A nyilvános site source az API repositoryban található, az újrafelhasználható avatar renderer pedig crates.io-n érhető el."
+open_source_text = "A nyilvános site source az GitHub repositoryban található, az újrafelhasználható avatar renderer pedig crates.io-n érhető el."
 
 [pages.docs]
 title = "Dokumentáció"
@@ -132,7 +132,7 @@ logging_text = "Deploymenttől függően infrastructure components, például ng
 avoid = "Mit Érdemes Nem Küldeni"
 avoid_text = "Email-shaped identifiers compatibility okból elfogadottak, de URLs megjelenhetnek infrastructure logs-ban. Küldjön stable internal id-t vagy one-way application hash-t, ha el akarja kerülni personal data elhelyezését a request URL-ben."
 repository = "Repository És Crate"
-repository_text = "Az implementation megtekinthető a public API repositoryban, az reusable avatar renderer pedig a Rust crate-ben."
+repository_text = "Az implementation megtekinthető a public GitHub repositoryban, az reusable avatar renderer pedig a Rust crate-ben."
 translations = "Fordítási megjegyzés"
 translations_text = "A webhely fordításai MI-támogatással és legjobb igyekezettel készültek. Ha javítandó megfogalmazást látsz, a GitHubon szívesen fogadjuk a hozzájárulásokat."
 translations_link = "Fordítások javítása"

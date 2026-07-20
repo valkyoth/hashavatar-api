@@ -5,7 +5,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: hashavatar-api:latest-wolfi
+    image: hashavatar-website:latest-wolfi
     container_name: hashavatar-app
     environment:
       PORT: "8080"

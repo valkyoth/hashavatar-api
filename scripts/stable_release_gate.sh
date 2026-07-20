@@ -24,11 +24,11 @@ scripts/generate-sbom.sh
 echo "stable release gate: reproducible release build"
 scripts/reproducible_build_check.sh
 
-if [ "${HASHAVATAR_API_GATE_PODMAN:-0}" = "1" ]; then
+if [ "${HASHAVATAR_WEBSITE_GATE_PODMAN:-0}" = "1" ]; then
     echo "stable release gate: Podman smoke"
     scripts/podman_smoke.sh
 else
-    echo "stable release gate: skipping Podman smoke; set HASHAVATAR_API_GATE_PODMAN=1 to enable"
+    echo "stable release gate: skipping Podman smoke; set HASHAVATAR_WEBSITE_GATE_PODMAN=1 to enable"
 fi
 
 echo "stable release gate ($mode): ok"

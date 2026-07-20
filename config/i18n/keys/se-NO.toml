@@ -70,7 +70,7 @@ style_layer_note = "Accessory ja expression layers leat character-style families
 signed_storage_links = "Vuolláičállon Vurkkenliŋkkat"
 signed_storage_links_text = "Jus dán deployment:s lea object storage konfigurerjuvvon, bivdde presigned storage link /v1/avatar/link endpoint:s. Dat endpoint vurke generated object ja máhcaha JSON:s signed URL, object key ja hashed cache key. Dábálaš avatar responses eai čájet signed-link metadata response headers siste."
 open_source = "Open Source"
-open_source_text = "Almmolaš siidu source lea API repository:s ja reusable avatar renderer almmuhuvvo crates.io:s."
+open_source_text = "Almmolaš siidu source lea GitHub repository:s ja reusable avatar renderer almmuhuvvo crates.io:s."
 
 [pages.docs]
 title = "Dokumentašuvdna"
@@ -132,7 +132,7 @@ logging_text = "Deployment mielde infrastructure components nugo nginx, Caddy, C
 avoid = "Maid Berret Garvit Sádde"
 avoid_text = "Email-shaped identifiers dohkkehuvvojit compatibility dihte, muhto URLs sáhttet oidnot infrastructure logs siste. Sádde stable internal id dahje one-way application hash jus háliidat garvit personal data request URL:s."
 repository = "Repository Ja Crate"
-repository_text = "Sáhtát geahččat implementation public API repository:s ja reusable avatar renderer Rust crate:s."
+repository_text = "Sáhtát geahččat implementation public GitHub repository:s ja reusable avatar renderer Rust crate:s."
 translations = "Jorgalanmearkkašupmi"
 translations_text = "Neahttasiiddu jorgaleamit leat AI-rávvejuvvon ja dahkkon buoremus áŋgiruššamiin. Jus oainnát teavstta maid sáhttá buoridit, leat GitHub-oasit bures boahtán."
 translations_link = "Buorit jorgaleamiid"

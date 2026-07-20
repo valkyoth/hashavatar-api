@@ -70,7 +70,7 @@ style_layer_note = "Accessory እና expression layers ለ character-style famil
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "ይህ deployment object storage configured ካለው፣ ከ /v1/avatar/link presigned storage link ይጠይቁ። Endpoint የ generated object store ያደርጋል እና signed URL, object key, hashed cache key ያለው JSON ይመልሳል። Standard avatar responses signed-link metadata በ response headers ውስጥ አያሳዩም።"
 open_source = "Open Source"
-open_source_text = "Public site source በ API repository ውስጥ አለ፣ reusable avatar renderer ደግሞ በ crates.io ታትሟል።"
+open_source_text = "Public site source በ GitHub repository ውስጥ አለ፣ reusable avatar renderer ደግሞ በ crates.io ታትሟል።"
 
 [pages.docs]
 title = "ሰነዶች"
@@ -132,7 +132,7 @@ logging_text = "እንደ deployment, nginx, Caddy, Cloudflare, hosting provider
 avoid = "መላክ የማይመከር"
 avoid_text = "Email-shaped identifiers ለ compatibility ይቀበላሉ፣ ግን URLs በ infrastructure logs ውስጥ ሊታዩ ይችላሉ። Personal data በ request URL ውስጥ እንዳይገባ stable internal id ወይም one-way application hash ይላኩ።"
 repository = "Repository እና Crate"
-repository_text = "Implementation በ public API repository ውስጥ፣ reusable avatar renderer በ Rust crate ውስጥ ማየት ይችላሉ።"
+repository_text = "Implementation በ public GitHub repository ውስጥ፣ reusable avatar renderer በ Rust crate ውስጥ ማየት ይችላሉ።"
 translations = "የትርጉም ማስታወሻ"
 translations_text = "የድር ጣቢያው ትርጉሞች በAI የተደገፉ እና በምርጥ ጥረት የተዘጋጁ ናቸው። ሊሻሻል የሚገባ አነጋገር ካዩ፣ በGitHub ላይ መዋጮ እንቀበላለን።"
 translations_link = "ትርጉሞችን አሻሽል"

@@ -70,7 +70,7 @@ style_layer_note = "Accessory iyo expression layers waxay shaqeeyaan character-s
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Haddii deployment-kan uu leeyahay object storage configured, ka codso presigned storage link /v1/avatar/link. Endpoint-kaas wuxuu store gareeyaa generated object wuxuuna soo celiyaa JSON leh signed URL, object key, iyo hashed cache key. Standard avatar responses ma muujinayaan signed-link metadata gudaha response headers."
 open_source = "Open Source"
-open_source_text = "Source-ka public site wuxuu ku jiraa API repository, reusable avatar renderer-na waxaa lagu publish gareeyay crates.io."
+open_source_text = "Source-ka public site wuxuu ku jiraa GitHub repository, reusable avatar renderer-na waxaa lagu publish gareeyay crates.io."
 
 [pages.docs]
 title = "Dukumenti"
@@ -132,7 +132,7 @@ logging_text = "Iyadoo ku xiran deployment, infrastructure components sida nginx
 avoid = "Waxa Fiican Inaan La Dirin"
 avoid_text = "Email-shaped identifiers waxaa loo aqbalaa compatibility, laakiin URLs waxay ka muuqan karaan infrastructure logs. Dir stable internal id ama one-way application hash haddii aad rabto inaad ka fogaato personal data gudaha request URL."
 repository = "Repository Iyo Crate"
-repository_text = "Waxaad implementation-ka ka eegi kartaa public API repository iyo reusable avatar renderer gudaha Rust crate."
+repository_text = "Waxaad implementation-ka ka eegi kartaa public GitHub repository iyo reusable avatar renderer gudaha Rust crate."
 translations = "Ogeysiis tarjumaad"
 translations_text = "Tarjumaadaha bogga waxaa caawiyay AI waxaana loo sameeyay dadaalka ugu fiican. Haddii aad aragto erayo u baahan hagaajin, wax ku biirinta GitHub waa la soo dhaweynayaa."
 translations_link = "Hagaaji tarjumaadaha"

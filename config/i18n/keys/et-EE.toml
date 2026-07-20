@@ -70,7 +70,7 @@ style_layer_note = "Accessory ja expression kihid rakenduvad character-style per
 signed_storage_links = "Allkirjastatud Salvestuslingid"
 signed_storage_links_text = "Kui selles deploymentis on object storage seadistatud, küsi presigned storage linki endpointist /v1/avatar/link. See endpoint salvestab generated objecti ja tagastab JSON-i signed URL, object key ja hashed cache key väljadega. Tavalised avatar responses ei avalda signed-link metadata väärtusi response headers sees."
 open_source = "Open Source"
-open_source_text = "Avaliku saidi source asub API repositorys ja reusable avatar renderer avaldatakse crates.io-s."
+open_source_text = "Avaliku saidi source asub GitHub repositorys ja reusable avatar renderer avaldatakse crates.io-s."
 
 [pages.docs]
 title = "Dokumentatsioon"
@@ -132,7 +132,7 @@ logging_text = "Sõltuvalt deploymentist võivad infrastructure components nagu 
 avoid = "Mida Vältida"
 avoid_text = "Email-shaped identifiers on compatibility tõttu lubatud, kuid URLs võivad ilmuda infrastructure logs sisse. Saada stable internal id või one-way application hash, kui soovid vältida personal data lisamist request URL-i."
 repository = "Repository Ja Crate"
-repository_text = "Implementation on nähtav public API repositorys ja reusable avatar renderer Rust crate'is."
+repository_text = "Implementation on nähtav public GitHub repositorys ja reusable avatar renderer Rust crate'is."
 translations = "Märkus tõlgete kohta"
 translations_text = "Veebisaidi tõlked on tehisintellekti abiga ja parima pingutuse põhimõttel tehtud. Kui märkad parandamist vajavat sõnastust, on panused GitHubis teretulnud."
 translations_link = "Paranda tõlkeid"

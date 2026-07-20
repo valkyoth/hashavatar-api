@@ -70,7 +70,7 @@ style_layer_note = "Accessory आणि expression layers character-style famili
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "या deployment मध्ये object storage configured असेल तर /v1/avatar/link मधून presigned storage link मागा. तो endpoint generated object store करतो आणि signed URL, object key आणि hashed cache key असलेले JSON परत करतो. Standard avatar responses response headers मध्ये signed-link metadata expose करत नाहीत."
 open_source = "Open Source"
-open_source_text = "Public site source API repository मध्ये आहे आणि reusable avatar renderer crates.io वर publish केलेला आहे."
+open_source_text = "Public site source GitHub repository मध्ये आहे आणि reusable avatar renderer crates.io वर publish केलेला आहे."
 
 [pages.docs]
 title = "दस्तऐवज"
@@ -132,7 +132,7 @@ logging_text = "deployment नुसार nginx, Caddy, Cloudflare, hosting pro
 avoid = "काय पाठवणे टाळावे"
 avoid_text = "Email-shaped identifiers compatibility साठी स्वीकारले जातात, पण URLs infrastructure logs मध्ये दिसू शकतात. request URL मध्ये personal data टाळायचा असल्यास stable internal id किंवा one-way application hash पाठवा."
 repository = "Repository आणि Crate"
-repository_text = "Implementation public API repository मध्ये आणि reusable avatar renderer Rust crate मध्ये पाहू शकता."
+repository_text = "Implementation public GitHub repository मध्ये आणि reusable avatar renderer Rust crate मध्ये पाहू शकता."
 translations = "भाषांतर सूचना"
 translations_text = "वेबसाइटची भाषांतरे AI-सहाय्यित आणि सर्वोत्तम प्रयत्नांवर आधारित आहेत. सुधारता येईल असे शब्दांकन दिसल्यास GitHub वर योगदान स्वागतार्ह आहे."
 translations_link = "भाषांतरे सुधारा"

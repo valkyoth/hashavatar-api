@@ -70,7 +70,7 @@ style_layer_note = "Accessory da expression layers suna aiki ga character-style 
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Idan wannan deployment yana da object storage configured, nemi presigned storage link daga /v1/avatar/link. Endpoint ɗin yana store generated object kuma yana dawo da JSON mai signed URL, object key, da hashed cache key. Standard avatar responses ba sa nuna signed-link metadata a response headers."
 open_source = "Open Source"
-open_source_text = "Source na public site yana cikin API repository, kuma reusable avatar renderer an publish shi a crates.io."
+open_source_text = "Source na public site yana cikin GitHub repository, kuma reusable avatar renderer an publish shi a crates.io."
 
 [pages.docs]
 title = "Takardu"
@@ -132,7 +132,7 @@ logging_text = "Dangane da deployment, infrastructure components kamar nginx, Ca
 avoid = "Abin Da Ya Fi Kyau Kada A Aika"
 avoid_text = "Email-shaped identifiers ana karɓa don compatibility, amma URLs na iya bayyana a infrastructure logs. Aika stable internal id ko one-way application hash idan kana son guje wa personal data a request URL."
 repository = "Repository Da Crate"
-repository_text = "Za ka iya duba implementation a public API repository da reusable avatar renderer a Rust crate."
+repository_text = "Za ka iya duba implementation a public GitHub repository da reusable avatar renderer a Rust crate."
 translations = "Bayanan fassara"
 translations_text = "Fassarar shafin yanar gizo an yi su da taimakon AI kuma bisa mafi kyawun ƙoƙari. Idan ka ga kalmomin da ya kamata a inganta, ana maraba da gudummawa a GitHub."
 translations_link = "Inganta fassara"

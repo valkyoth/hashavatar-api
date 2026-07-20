@@ -1,10 +1,10 @@
-# hashavatar-api 0.4.0 Release Notes
+# hashavatar-website 0.4.0 Release Notes
 
 Status: released
 
 ## Summary
 
-`0.4.0` aligned the API service with the `hashavatar` `0.4.1` renderer.
+`0.4.0` aligned the website with the `hashavatar` `0.4.1` renderer.
 
 These notes are reconstructed from the tag and commit history.
 

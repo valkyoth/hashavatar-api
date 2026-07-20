@@ -70,7 +70,7 @@ style_layer_note = "Les accessory i expression layers s'apliquen a les character
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Si aquest deployment té object storage configurat, demana un presigned storage link a /v1/avatar/link. Aquest endpoint store el generated object i retorna JSON amb signed URL, object key i hashed cache key. Les standard avatar responses no exposen signed-link metadata als response headers."
 open_source = "Open Source"
-open_source_text = "El source del public site és al API repository i el reusable avatar renderer està publicat a crates.io."
+open_source_text = "El source del public site és al GitHub repository i el reusable avatar renderer està publicat a crates.io."
 
 [pages.docs]
 title = "Documentació"
@@ -132,7 +132,7 @@ logging_text = "Segons el deployment, infrastructure components com nginx, Caddy
 avoid = "Què És Millor No Enviar"
 avoid_text = "Email-shaped identifiers s'accepten per compatibility, però URLs poden aparèixer en infrastructure logs. Envia un stable internal id o one-way application hash si vols evitar personal data a la request URL."
 repository = "Repository I Crate"
-repository_text = "Pots revisar la implementation al public API repository i el reusable avatar renderer al Rust crate."
+repository_text = "Pots revisar la implementation al public GitHub repository i el reusable avatar renderer al Rust crate."
 translations = "Avís sobre les traduccions"
 translations_text = "Les traduccions del lloc web són assistides per IA i fetes amb el millor esforç. Si veus text que caldria millorar, les contribucions a GitHub són benvingudes."
 translations_link = "Millorar traduccions"

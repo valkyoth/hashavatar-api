@@ -70,7 +70,7 @@ style_layer_note = "Accessory და expression layers გამოიყენ�
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "თუ ამ deployment-ში object storage configured არის, მოითხოვე presigned storage link /v1/avatar/link-იდან. ეს endpoint store აკეთებს generated object-ს და აბრუნებს JSON-ს signed URL-ით, object key-ით და hashed cache key-ით. Standard avatar responses response headers-ში signed-link metadata-ს არ აჩვენებს."
 open_source = "Open Source"
-open_source_text = "Public site-ის source API repository-შია, ხოლო reusable avatar renderer publish არის crates.io-ზე."
+open_source_text = "Public site-ის source GitHub repository-შია, ხოლო reusable avatar renderer publish არის crates.io-ზე."
 
 [pages.docs]
 title = "დოკუმენტაცია"
@@ -132,7 +132,7 @@ logging_text = "Deployment-ზე დამოკიდებულებით,
 avoid = "რის გაგზავნას სჯობს მოერიდო"
 avoid_text = "Email-shaped identifiers მიიღება compatibility-სთვის, მაგრამ URLs შეიძლება infrastructure logs-ში გამოჩნდეს. გააგზავნე stable internal id ან one-way application hash, თუ გინდა personal data-ს თავიდან აცილება request URL-ში."
 repository = "Repository და Crate"
-repository_text = "შეგიძლია implementation შეამოწმო public API repository-ში და reusable avatar renderer Rust crate-ში."
+repository_text = "შეგიძლია implementation შეამოწმო public GitHub repository-ში და reusable avatar renderer Rust crate-ში."
 translations = "შენიშვნა თარგმანებზე"
 translations_text = "საიტის თარგმანები AI-assisted არის და best effort პრინციპით გაკეთდა. თუ ხედავ wording-ს, რომელიც გაუმჯობესებას საჭიროებს, GitHub-ზე contributions მისასალმებელია."
 translations_link = "თარგმანების გაუმჯობესება"

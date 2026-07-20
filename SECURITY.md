@@ -8,7 +8,7 @@ Security fixes are expected for the latest published `1.1.x` release.
 
 Please report security issues privately through GitHub Security Advisories for:
 
-`https://github.com/valkyoth/hashavatar-api/security/advisories/new`
+`https://github.com/valkyoth/hashavatar-website/security/advisories/new`
 
 If GitHub advisories are unavailable, open a minimal public issue that asks for a private contact path without disclosing exploit details.
 

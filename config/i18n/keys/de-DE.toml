@@ -70,7 +70,7 @@ style_layer_note = "Accessoire- und Ausdrucks-Layer gelten für charakterartige 
 signed_storage_links = "Signierte Speicher-Links"
 signed_storage_links_text = "Wenn dieser Deployment Objekt-Speicher konfiguriert hat, fordere einen vorsignierten Speicher-Link über /v1/avatar/link an. Dieser Endpunkt speichert das erzeugte Objekt und gibt JSON mit signierter URL, Objekt-Key und gehashtem Cache-Key zurück. Normale Avatar-Antworten geben keine signierten Link-Metadaten in Response-Headern aus."
 open_source = "Open Source"
-open_source_text = "Der öffentliche Quellcode der Website liegt im API-Repository und der wiederverwendbare Avatar-Renderer ist auf crates.io veröffentlicht."
+open_source_text = "Der öffentliche Quellcode der Website liegt im GitHub-Repository und der wiederverwendbare Avatar-Renderer ist auf crates.io veröffentlicht."
 
 [pages.docs]
 title = "Dokumentation"
@@ -132,7 +132,7 @@ logging_text = "Je nach Deployment können Infrastrukturkomponenten wie nginx, C
 avoid = "Was du besser nicht sendest"
 avoid_text = "E-Mail-artige Kennungen werden aus Kompatibilitätsgründen akzeptiert, aber URLs können in Infrastruktur-Logs erscheinen. Sende eine stabile interne ID oder einen Einweg-Anwendungs-Hash, wenn du personenbezogene Daten in der Request-URL vermeiden möchtest."
 repository = "Repository und Crate"
-repository_text = "Du kannst die Implementierung im öffentlichen API-Repository und den wiederverwendbaren Avatar-Renderer im Rust-Crate prüfen."
+repository_text = "Du kannst die Implementierung im öffentlichen GitHub-Repository und den wiederverwendbaren Avatar-Renderer im Rust-Crate prüfen."
 translations = "Hinweis zu Übersetzungen"
 translations_text = "Die Website-Übersetzungen sind KI-unterstützt und nach bestem Bemühen erstellt. Wenn eine Formulierung verbessert werden sollte, sind Beiträge auf GitHub willkommen."
 translations_link = "Übersetzungen verbessern"

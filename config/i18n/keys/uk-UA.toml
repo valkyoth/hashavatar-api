@@ -70,7 +70,7 @@ style_layer_note = "Шари аксесуарів і виразів застос
 signed_storage_links = "Підписані посилання сховища"
 signed_storage_links_text = "Якщо в цьому deployment налаштовано object storage, запитайте presigned storage link через /v1/avatar/link. Endpoint зберігає згенерований object і повертає JSON із signed URL, object key і hashed cache key. Standard avatar responses не розкривають signed-link metadata у response headers."
 open_source = "Open source"
-open_source_text = "Код публічного сайту знаходиться в API repository, а reusable avatar renderer опубліковано на crates.io."
+open_source_text = "Код публічного сайту знаходиться в GitHub repository, а reusable avatar renderer опубліковано на crates.io."
 
 [pages.docs]
 title = "Документація"
@@ -132,7 +132,7 @@ logging_text = "Залежно від deployment, infrastructure components на
 avoid = "Що краще не надсилати"
 avoid_text = "Email-shaped identifiers accepted для compatibility, але URLs можуть з'являтися в infrastructure logs. Надсилайте stable internal id або one-way application hash, якщо хочете уникнути personal data в request URL."
 repository = "Repository і crate"
-repository_text = "Ви можете переглянути implementation у public API repository і reusable avatar renderer у Rust crate."
+repository_text = "Ви можете переглянути implementation у public GitHub repository і reusable avatar renderer у Rust crate."
 translations = "Примітка щодо перекладів"
 translations_text = "Переклади сайту виконані за допомогою ШІ та на основі найкращих зусиль. Якщо ви бачите формулювання, яке варто покращити, внески на GitHub вітаються."
 translations_link = "Покращити переклади"

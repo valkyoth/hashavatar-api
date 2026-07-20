@@ -70,7 +70,7 @@ style_layer_note = "Accessory we expression layers character-style families üç
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Bu deployment içinde object storage configured bolsa, /v1/avatar/link-den presigned storage link sora. Ol endpoint generated object-i store edýär we signed URL, object key we hashed cache key bilen JSON gaýtarýar. Standard avatar responses response headers içinde signed-link metadata görkezmeýär."
 open_source = "Open Source"
-open_source_text = "Public site source API repository içinde, reusable avatar renderer bolsa crates.io-da publish edilen."
+open_source_text = "Public site source GitHub repository içinde, reusable avatar renderer bolsa crates.io-da publish edilen."
 
 [pages.docs]
 title = "Resminamalar"
@@ -132,7 +132,7 @@ logging_text = "Deployment-e baglylykda nginx, Caddy, Cloudflare, hosting provid
 avoid = "Näme Ibermezlik Gowudyr"
 avoid_text = "Email-shaped identifiers compatibility üçin kabul edilýär, ýöne URLs infrastructure logs içinde görünip biler. Request URL içinde personal data bolmasyn diýseň stable internal id ýa-da one-way application hash iber."
 repository = "Repository We Crate"
-repository_text = "Implementation-i public API repository içinde we reusable avatar renderer-i Rust crate içinde barlap bilersiň."
+repository_text = "Implementation-i public GitHub repository içinde we reusable avatar renderer-i Rust crate içinde barlap bilersiň."
 translations = "Terjime belligi"
 translations_text = "Website terjimeleri AI-assisted we best effort esasynda edildi. Gowulandyrylmaly wording görseň, GitHub-daky contributions hoş geldiňiz."
 translations_link = "Terjimeleri gowulandyr"

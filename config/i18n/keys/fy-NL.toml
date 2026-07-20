@@ -70,7 +70,7 @@ style_layer_note = "Accessory en expression layers jilde foar character-style fa
 signed_storage_links = "Undertekene Opslachkeppelings"
 signed_storage_links_text = "As dizze deployment object storage konfigurearre hat, freegje dan in presigned storage link oan fan /v1/avatar/link. Dy endpoint bewarret it generated object en jout JSON werom mei signed URL, object key en hashed cache key. Standert avatar responses litte gjin signed-link metadata sjen yn response headers."
 open_source = "Open Source"
-open_source_text = "De source fan de publike site stiet yn it API repository en de reusable avatar renderer wurdt publisearre op crates.io."
+open_source_text = "De source fan de publike site stiet yn it GitHub repository en de reusable avatar renderer wurdt publisearre op crates.io."
 
 [pages.docs]
 title = "Dokumintaasje"
@@ -132,7 +132,7 @@ logging_text = "Ôfhinklik fan deployment kinne infrastructure components lykas 
 avoid = "Watst Better Net Stjoerst"
 avoid_text = "Email-shaped identifiers wurde akseptearre foar compatibility, mar URLs kinne yn infrastructure logs ferskine. Stjoer stable internal id of one-way application hash ast personal data yn de request URL foarkomme wolst."
 repository = "Repository En Crate"
-repository_text = "Do kinst de implementation besjen yn it public API repository en de reusable avatar renderer yn de Rust crate."
+repository_text = "Do kinst de implementation besjen yn it public GitHub repository en de reusable avatar renderer yn de Rust crate."
 translations = "Opmerking oer oersettingen"
 translations_text = "De oersettingen fan de webside binne mei AI-stipe en nei bêste ynset makke. Ast tekst sjochst dy't better kin, binne bydragen op GitHub wolkom."
 translations_link = "Oersettingen ferbetterje"

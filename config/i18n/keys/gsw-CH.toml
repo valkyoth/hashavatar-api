@@ -70,7 +70,7 @@ style_layer_note = "Accessoire- und Usdruck-Layer gelte für charakterartigi Fam
 signed_storage_links = "Signierti Speicher-Links"
 signed_storage_links_text = "Wänn die Deployment Objekt-Speicher konfiguriert hät, fordere en vorsignierte Speicher-Link über /v1/avatar/link aa. De Endpoint speichert s generierte Objekt und git JSON mit signierter URL, Objekt-Key und ghashtem Cache-Key zrugg. Normali Avatar-Antworte gänd kei signierti Link-Metadate i Response-Header use."
 open_source = "Open Source"
-open_source_text = "De Quellcode vo de öffentliche Site liit im API-Repository und de wiederverwendbari Avatar-Renderer isch uf crates.io veröffentlicht."
+open_source_text = "De Quellcode vo de öffentliche Site liit im GitHub-Repository und de wiederverwendbari Avatar-Renderer isch uf crates.io veröffentlicht."
 
 [pages.docs]
 title = "Doku"
@@ -132,7 +132,7 @@ logging_text = "Je nach Deployment chönd Infrastrukturkomponente wie nginx, Cad
 avoid = "Was du besser nöd sendisch"
 avoid_text = "E-Mail-artigi Kennige werde us Kompatibilitätsgründ akzeptiert, aber URLs chönd i Infrastruktur-Logs uftauche. Schick e stabiles internes ID oder en Einweg-Applikations-Hash, wänn du Personedate i de Request-URL vermeide wetsch."
 repository = "Repository und Crate"
-repository_text = "Du chasch d Implementierig im öffentliche API-Repository und de wiederverwendbari Avatar-Renderer im Rust-Crate prüefe."
+repository_text = "Du chasch d Implementierig im öffentliche GitHub-Repository und de wiederverwendbari Avatar-Renderer im Rust-Crate prüefe."
 translations = "Hiwis zu Übersetzigä"
 translations_text = "D Übersetzigä vo dere Website sind KI-unterstützt und nach bestem Wüsse gmacht. Wenn du Formulierigä gsehsch, wo besser chönted sii, sind Biträg uf GitHub willkomme."
 translations_link = "Übersetzigä verbessere"

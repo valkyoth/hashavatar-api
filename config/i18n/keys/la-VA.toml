@@ -70,7 +70,7 @@ style_layer_note = "Strata accessorii et expressionis familiis personarum applic
 signed_storage_links = "Nexus repositorii subscripti"
 signed_storage_links_text = "Si hoc deployment repositorium objectorum configuratum habet, nexum repositorii praescriptum a /v1/avatar/link pete. Hic endpoint objectum generatum servat et JSON cum URL subscripto, clave objecti, et clave cache hashata reddit. Responsa avatarum ordinaria metadata nexuum subscriptorum in response headers non exponunt."
 open_source = "Fons apertus"
-open_source_text = "Fons situs publici in repositorio API habitat et renderer avatarum reutilis in crates.io publicatur."
+open_source_text = "Fons situs publici in repositorio GitHub habitat et renderer avatarum reutilis in crates.io publicatur."
 
 [pages.docs]
 title = "Documenta"
@@ -132,7 +132,7 @@ logging_text = "Secundum deployment, partes infrastructurae sicut nginx, Caddy, 
 avoid = "Quid vitare debes mittere"
 avoid_text = "Identificatores formae electronicae pro compatibilitate accipiuntur, sed URLs in actis infrastructurae apparere possunt. Mitte id internum stabile vel hash applicationis unius viae cum data personalia in URL petitionis vitare vis."
 repository = "Repositorium et crate"
-repository_text = "Implementationem in repositorio API publico et renderatorem avatarum reutilis in Rust crate inspicere potes."
+repository_text = "Implementationem in repositorio GitHub publico et renderatorem avatarum reutilis in Rust crate inspicere potes."
 translations = "Nota De Translationibus"
 translations_text = "Translationes huius situs ope intelligentiae artificialis et optimo conatu factae sunt. Si verba emendanda vides, contributiones in GitHub gratae sunt."
 translations_link = "Emendare translationes"

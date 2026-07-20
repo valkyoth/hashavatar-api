@@ -70,7 +70,7 @@ style_layer_note = "Akcesoraĵaj kaj mienaj tavoloj aplikiĝas al karakter-stila
 signed_storage_links = "Subskribitaj stokaj ligiloj"
 signed_storage_links_text = "Se ĉi tiu deployment havas objektan stokadon agorditan, petu antaŭsubskribitan stokan ligilon de /v1/avatar/link. Tiu endpoint stokas la generitan objekton kaj redonas JSON kun la subskribita URL, objekta ŝlosilo kaj haŝita kaŝmemora ŝlosilo. Normaj avataraj respondoj ne malkaŝas subskribit-ligilan metadata en response headers."
 open_source = "Malferma fonto"
-open_source_text = "La fonto de la publika retejo troviĝas en la API-deponejo kaj la reuzebla avatara renderilo estas publikigita ĉe crates.io."
+open_source_text = "La fonto de la publika retejo troviĝas en la GitHub-deponejo kaj la reuzebla avatara renderilo estas publikigita ĉe crates.io."
 
 [pages.docs]
 title = "Dokumentaro"
@@ -132,7 +132,7 @@ logging_text = "Depende de deployment, infrastrukturaj komponantoj kiel nginx, C
 avoid = "Kion eviti sendi"
 avoid_text = "Retpoŝt-formaj identigiloj estas akceptataj por kongruo, sed URL-oj povas aperi en infrastrukturaj protokoloj. Sendu stabilan internan id aŭ unudirektan aplikaĵan haŝon kiam vi volas eviti meti personajn datumojn en la peta URL."
 repository = "Deponejo kaj crate"
-repository_text = "Vi povas inspekti la efektivigon en la publika API-deponejo kaj la reuzeblan avataran renderilon en la Rust-kesto."
+repository_text = "Vi povas inspekti la efektivigon en la publika GitHub-deponejo kaj la reuzeblan avataran renderilon en la Rust-kesto."
 translations = "Noto pri tradukoj"
 translations_text = "La retejaj tradukoj estas helpataj de AI kaj faritaj laŭ plej bona peno. Se vi vidas vortumon plibonigindan, kontribuoj estas bonvenaj ĉe GitHub."
 translations_link = "Plibonigi tradukojn"

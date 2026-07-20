@@ -70,7 +70,7 @@ style_layer_note = "Accessory a expression layers se používají pro character-
 signed_storage_links = "Podepsané Odkazy Úložiště"
 signed_storage_links_text = "Pokud má tento deployment nakonfigurované object storage, vyžádejte si presigned storage link z /v1/avatar/link. Tento endpoint uloží generated object a vrátí JSON se signed URL, object key a hashed cache key. Standardní avatar responses nevystavují signed-link metadata v response headers."
 open_source = "Open Source"
-open_source_text = "Zdroj veřejného webu je v API repository a reusable avatar renderer je publikován na crates.io."
+open_source_text = "Zdroj veřejného webu je v GitHub repository a reusable avatar renderer je publikován na crates.io."
 
 [pages.docs]
 title = "Dokumentace"
@@ -132,7 +132,7 @@ logging_text = "Podle deployment mohou infrastructure components jako nginx, Cad
 avoid = "Co Raději Neposílat"
 avoid_text = "Email-shaped identifiers jsou přijímány kvůli compatibility, ale URLs se mohou objevit v infrastructure logs. Posílejte stable internal id nebo one-way application hash, pokud nechcete dávat personal data do request URL."
 repository = "Repository A Crate"
-repository_text = "Implementation můžete zkontrolovat v public API repository a reusable avatar renderer v Rust crate."
+repository_text = "Implementation můžete zkontrolovat v public GitHub repository a reusable avatar renderer v Rust crate."
 translations = "Poznámka k překladům"
 translations_text = "Překlady webu jsou podporované AI a vytvořené podle nejlepší snahy. Pokud uvidíte formulaci, kterou je vhodné zlepšit, příspěvky na GitHubu jsou vítány."
 translations_link = "Vylepšit překlady"

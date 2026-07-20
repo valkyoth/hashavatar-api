@@ -1,6 +1,6 @@
 # Security Controls
 
-This document maps the API service controls to the main risks covered by the
+This document maps the website and avatar endpoint controls to the main risks covered by the
 local test and release gates.
 
 ## Runtime Controls
@@ -37,7 +37,7 @@ local test and release gates.
   separate target directories and compares the result.
 - `scripts/stable_release_gate.sh` runs the fast gate, local smoke, SBOM, and
   reproducibility checks; optional Podman smoke can be enabled with
-  `HASHAVATAR_API_GATE_PODMAN=1`.
+  `HASHAVATAR_WEBSITE_GATE_PODMAN=1`.
 
 ## Boundaries
 

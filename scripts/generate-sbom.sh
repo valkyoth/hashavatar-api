@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-output_dir="${HASHAVATAR_API_SBOM_DIR:-target/release-evidence}"
+output_dir="${HASHAVATAR_WEBSITE_SBOM_DIR:-target/release-evidence}"
 mkdir -p "$output_dir"
 
 if ! cargo sbom --version >/dev/null 2>&1; then
@@ -9,8 +9,8 @@ if ! cargo sbom --version >/dev/null 2>&1; then
     exit 1
 fi
 
-spdx_output="$output_dir/hashavatar-api.spdx.json"
-cyclonedx_output="$output_dir/hashavatar-api.cyclonedx.json"
+spdx_output="$output_dir/hashavatar-website.spdx.json"
+cyclonedx_output="$output_dir/hashavatar-website.cyclonedx.json"
 manifest="$output_dir/sbom-MANIFEST.txt"
 
 cargo sbom --output-format spdx_json_2_3 > "$spdx_output"
@@ -22,7 +22,7 @@ grep -q '"spdxVersion"[[:space:]]*:[[:space:]]*"SPDX-2.3"' "$spdx_output"
 grep -q '"bomFormat"[[:space:]]*:[[:space:]]*"CycloneDX"' "$cyclonedx_output"
 
 {
-    echo "hashavatar-api SBOM evidence"
+    echo "hashavatar-website SBOM evidence"
     echo
     echo "rustc:"
     rustc -Vv

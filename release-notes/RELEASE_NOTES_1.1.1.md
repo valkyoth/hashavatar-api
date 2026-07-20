@@ -1,4 +1,4 @@
-# hashavatar-api 1.1.1 Release Notes
+# hashavatar-website 1.1.1 Release Notes
 
 Status: draft
 
@@ -12,7 +12,7 @@ against the final tag before publishing.
 
 ## Changed
 
-- Bumped `hashavatar-api` to `1.1.1`.
+- Bumped `hashavatar-website` to `1.1.1`.
 - Updated the renderer dependency to `hashavatar` `1.1.1`.
 - Refreshed the lockfile with current compatible crate updates.
 - Updated GitHub workflow tooling where newer action versions are available.

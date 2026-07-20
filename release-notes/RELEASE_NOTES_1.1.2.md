@@ -1,18 +1,17 @@
-# hashavatar-api 1.1.2 Release Notes
+# hashavatar-website 1.1.2 Release Notes
 
-Status: release candidate
+Status: released
 
 ## Summary
 
-`1.1.2` is the next stable patch release for the API, renderer dependency,
+`1.1.2` is a stable patch release for the website, renderer dependency,
 Rust toolchain, dependency graph, and CI tooling.
 
-These notes describe the release candidate and should be checked against the
-final tag before publishing.
+These notes describe the signed `v1.1.2` release tag.
 
 ## Changed
 
-- Bumped `hashavatar-api` to `1.1.2`.
+- Bumped `hashavatar-website` to `1.1.2`.
 - Updated the renderer dependency to `hashavatar` `1.1.2`.
 - Updated the project toolchain and MSRV to Rust `1.97.0`.
 - Updated `lru` to `0.18.1` and refreshed all compatible transitive crates.
@@ -41,6 +40,6 @@ final tag before publishing.
 
 ```bash
 cargo outdated --workspace --root-deps-only
-HASHAVATAR_API_GATE_PODMAN=1 scripts/stable_release_gate.sh check
+HASHAVATAR_WEBSITE_GATE_PODMAN=1 scripts/stable_release_gate.sh check
 podman compose -f deploy/podman-compose.yml config
 ```

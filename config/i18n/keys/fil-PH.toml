@@ -70,7 +70,7 @@ style_layer_note = "Ang accessory at expression layers ay ginagamit sa character
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Kung may configured object storage ang deployment na ito, humingi ng presigned storage link mula sa /v1/avatar/link. Ini-store ng endpoint ang generated object at nagbabalik ng JSON na may signed URL, object key, at hashed cache key. Hindi inilalabas ng standard avatar responses ang signed-link metadata sa response headers."
 open_source = "Open Source"
-open_source_text = "Ang source ng public site ay nasa API repository at ang reusable avatar renderer ay naka-publish sa crates.io."
+open_source_text = "Ang source ng public site ay nasa GitHub repository at ang reusable avatar renderer ay naka-publish sa crates.io."
 
 [pages.docs]
 title = "Dokumentasyon"
@@ -132,7 +132,7 @@ logging_text = "Depende sa deployment, maaaring mag-store ng access logs at oper
 avoid = "Ano Ang Mabuting Iwasang Ipadala"
 avoid_text = "Tinatanggap ang email-shaped identifiers para sa compatibility, pero maaaring lumabas ang URLs sa infrastructure logs. Magpadala ng stable internal id o one-way application hash kung gusto mong iwasan ang personal data sa request URL."
 repository = "Repository At Crate"
-repository_text = "Maaari mong tingnan ang implementation sa public API repository at ang reusable avatar renderer sa Rust crate."
+repository_text = "Maaari mong tingnan ang implementation sa public GitHub repository at ang reusable avatar renderer sa Rust crate."
 translations = "Paunawa sa Salin"
 translations_text = "Ang mga salin ng website ay tinulungan ng AI at ginawa sa abot ng makakaya. Kung may makita kang pahayag na dapat pagandahin, malugod na tinatanggap ang ambag sa GitHub."
 translations_link = "Pagbutihin ang mga salin"

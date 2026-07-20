@@ -70,7 +70,7 @@ style_layer_note = "Tilbehørs- og udtrykslag gælder for karakterlignende famil
 signed_storage_links = "Signerede lagerlinks"
 signed_storage_links_text = "Hvis denne deployment har objektlager konfigureret, så anmod om et presigned lagerlink fra /v1/avatar/link. Endpointet gemmer det genererede objekt og returnerer JSON med signeret URL, objekt-key og hashed cache-key. Standard avatar-svar eksponerer ikke signed-link metadata i response headers."
 open_source = "Open source"
-open_source_text = "Kildekoden til det offentlige site ligger i API-repositoriet, og den genbrugelige avatar-renderer er publiceret på crates.io."
+open_source_text = "Kildekoden til det offentlige site ligger i GitHub-repositoriet, og den genbrugelige avatar-renderer er publiceret på crates.io."
 
 [pages.docs]
 title = "Dokumentation"
@@ -132,7 +132,7 @@ logging_text = "Afhængigt af deployment kan infrastrukturkomponenter som nginx,
 avoid = "Hvad du bør undgå at sende"
 avoid_text = "Email-lignende identifikatorer accepteres af kompatibilitetshensyn, men URLs kan optræde i infrastrukturlogs. Send en stabil intern id eller envejs application hash, når du vil undgå at placere persondata i request-URL'en."
 repository = "Repository og crate"
-repository_text = "Du kan inspicere implementationen i det offentlige API-repository og den genbrugelige avatar-renderer i Rust-craten."
+repository_text = "Du kan inspicere implementationen i det offentlige GitHub-repository og den genbrugelige avatar-renderer i Rust-craten."
 translations = "Bemærkning om oversættelser"
 translations_text = "Webstedets oversættelser er AI-assisterede og lavet efter bedste evne. Hvis du ser formuleringer, der bør forbedres, er bidrag velkomne på GitHub."
 translations_link = "Forbedr oversættelser"

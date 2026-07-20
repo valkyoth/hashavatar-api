@@ -70,7 +70,7 @@ style_layer_note = "As camadas de acessório e expressão aplicam-se a famílias
 signed_storage_links = "Ligações de armazenamento assinadas"
 signed_storage_links_text = "Se este deployment tiver armazenamento de objetos configurado, pede uma ligação de armazenamento pré-assinada em /v1/avatar/link. Esse endpoint guarda o objeto gerado e devolve JSON com o URL assinado, chave do objeto e uma chave de cache com hash. As respostas normais de avatar não expõem metadados de ligações assinadas nos headers."
 open_source = "Open source"
-open_source_text = "O código do site público está no repositório da API e o renderer reutilizável de avatares é publicado em crates.io."
+open_source_text = "O código do site público está no repositório da GitHub e o renderer reutilizável de avatares é publicado em crates.io."
 
 [pages.docs]
 title = "Documentação"
@@ -132,7 +132,7 @@ logging_text = "Dependendo do deployment, componentes de infraestrutura como ngi
 avoid = "O que evitar enviar"
 avoid_text = "Identificadores com formato de e-mail são aceites por compatibilidade, mas URLs podem aparecer em logs de infraestrutura. Envia um id interno estável ou um hash unidirecional da aplicação quando quiseres evitar colocar dados pessoais no URL do pedido."
 repository = "Repositório e crate"
-repository_text = "Podes inspecionar a implementação no repositório público da API e o renderer reutilizável de avatares no crate Rust."
+repository_text = "Podes inspecionar a implementação no repositório público da GitHub e o renderer reutilizável de avatares no crate Rust."
 translations = "Nota sobre traduções"
 translations_text = "As traduções do site são assistidas por IA e feitas com o melhor esforço. Se encontrar texto que deva ser melhorado, contribuições são bem-vindas no GitHub."
 translations_link = "Melhorar traduções"

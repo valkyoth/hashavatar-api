@@ -70,7 +70,7 @@ style_layer_note = "Accessory ва expression layers ба character-style famili
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Агар ин deployment object storage configured дошта бошад, аз /v1/avatar/link presigned storage link пурс. Он endpoint generated object-ро store мекунад ва JSON бо signed URL, object key ва hashed cache key бармегардонад. Standard avatar responses дар response headers signed-link metadata нишон намедиҳанд."
 open_source = "Open Source"
-open_source_text = "Source-и public site дар API repository аст ва reusable avatar renderer дар crates.io publish шудааст."
+open_source_text = "Source-и public site дар GitHub repository аст ва reusable avatar renderer дар crates.io publish шудааст."
 
 [pages.docs]
 title = "Ҳуҷҷатҳо"
@@ -132,7 +132,7 @@ logging_text = "Вобаста ба deployment, infrastructure components мис
 avoid = "Чиро Беҳтар Аст Нафиристӣ"
 avoid_text = "Email-shaped identifiers барои compatibility қабул мешаванд, аммо URLs метавонанд дар infrastructure logs пайдо шаванд. Агар хоҳӣ personal data дар request URL набошад, stable internal id ё one-way application hash фирист."
 repository = "Repository Ва Crate"
-repository_text = "Implementation-ро дар public API repository ва reusable avatar renderer-ро дар Rust crate санҷида метавонӣ."
+repository_text = "Implementation-ро дар public GitHub repository ва reusable avatar renderer-ро дар Rust crate санҷида метавонӣ."
 translations = "Ёддошти тарҷума"
 translations_text = "Тарҷумаҳои website бо AI-assisted ва дар асоси best effort иҷро шудаанд. Агар wording-и беҳтаршавандаро бинӣ, contributions дар GitHub хуш пазируфта мешаванд."
 translations_link = "Тарҷумаҳоро беҳтар кун"

@@ -2,21 +2,21 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/hashavatar-api-smoke.XXXXXX")
-KEEP_LOGS=${HASHAVATAR_API_SMOKE_KEEP_LOGS:-0}
-BUILD_RELEASE=${HASHAVATAR_API_SMOKE_RELEASE:-0}
-HASHAVATAR_API_PID=
+TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/hashavatar-website-smoke.XXXXXX")
+KEEP_LOGS=${HASHAVATAR_WEBSITE_SMOKE_KEEP_LOGS:-0}
+BUILD_RELEASE=${HASHAVATAR_WEBSITE_SMOKE_RELEASE:-0}
+HASHAVATAR_WEBSITE_PID=
 
 cleanup() {
     status=$?
 
-    if [ -n "$HASHAVATAR_API_PID" ]; then
-        kill "$HASHAVATAR_API_PID" 2>/dev/null || true
+    if [ -n "$HASHAVATAR_WEBSITE_PID" ]; then
+        kill "$HASHAVATAR_WEBSITE_PID" 2>/dev/null || true
         sleep 0.2
-        if kill -0 "$HASHAVATAR_API_PID" 2>/dev/null; then
-            kill -9 "$HASHAVATAR_API_PID" 2>/dev/null || true
+        if kill -0 "$HASHAVATAR_WEBSITE_PID" 2>/dev/null; then
+            kill -9 "$HASHAVATAR_WEBSITE_PID" 2>/dev/null || true
         fi
-        wait "$HASHAVATAR_API_PID" 2>/dev/null || true
+        wait "$HASHAVATAR_WEBSITE_PID" 2>/dev/null || true
     fi
 
     if [ "$KEEP_LOGS" = "1" ] || [ "$status" -ne 0 ]; then
@@ -50,7 +50,7 @@ if [ "$BUILD_RELEASE" = "1" ]; then
         AWS_ACCESS_KEY_ID=smoke-test \
         AWS_SECRET_ACCESS_KEY=smoke-test \
         AWS_EC2_METADATA_DISABLED=true \
-        "$ROOT_DIR/target/release/hashavatar-api" > "$TMP_DIR/server.log" 2>&1 &
+        "$ROOT_DIR/target/release/hashavatar-website" > "$TMP_DIR/server.log" 2>&1 &
 else
     PORT="$port" \
         PUBLIC_WEBSITE_HOST=127.0.0.1 \
@@ -63,7 +63,7 @@ else
         AWS_EC2_METADATA_DISABLED=true \
         cargo run --quiet > "$TMP_DIR/server.log" 2>&1 &
 fi
-HASHAVATAR_API_PID=$!
+HASHAVATAR_WEBSITE_PID=$!
 
 attempt=0
 while [ "$attempt" -lt 150 ]; do

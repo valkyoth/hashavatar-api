@@ -15,7 +15,7 @@ docker_rust_image="$(
 )"
 lock_version="$(
     awk '
-        $0 == "name = \"hashavatar-api\"" { in_package = 1; next }
+        $0 == "name = \"hashavatar-website\"" { in_package = 1; next }
         in_package && /^version = / {
             gsub(/version = "|"/, "", $0);
             print $0;
@@ -53,6 +53,21 @@ if ! grep -q '^license = "EUPL-1.2"$' Cargo.toml; then
     echo "release metadata: Cargo.toml must declare license = \"EUPL-1.2\"" >&2
     exit 1
 fi
+
+for manifest in Cargo.toml Cargo.toml.split-template; do
+    if ! grep -q '^name = "hashavatar-website"$' "$manifest"; then
+        echo "release metadata: $manifest must name the private hashavatar-website package" >&2
+        exit 1
+    fi
+    if ! grep -q '^publish = false$' "$manifest"; then
+        echo "release metadata: $manifest must declare publish = false" >&2
+        exit 1
+    fi
+    if ! grep -q '^repository = "https://github.com/valkyoth/hashavatar-website"$' "$manifest"; then
+        echo "release metadata: $manifest has the wrong repository URL" >&2
+        exit 1
+    fi
+done
 
 if ! grep -q 'EUROPEAN UNION PUBLIC LICENCE v. 1.2' LICENSE; then
     echo "release metadata: LICENSE does not look like EUPL 1.2" >&2

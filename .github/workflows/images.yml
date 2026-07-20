@@ -86,8 +86,8 @@ jobs:
           cache-from: type=gha,scope=wolfi
           cache-to: type=gha,mode=max,scope=wolfi
           labels: |
-            org.opencontainers.image.title=hashavatar-api
-            org.opencontainers.image.description=Public avatar API and demo website for hashavatar
+            org.opencontainers.image.title=hashavatar-website
+            org.opencontainers.image.description=Demo website for the hashavatar Rust crate
             org.opencontainers.image.licenses=EUPL-1.2
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

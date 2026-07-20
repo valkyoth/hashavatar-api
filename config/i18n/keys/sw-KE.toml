@@ -70,7 +70,7 @@ style_layer_note = "Accessory na expression layers hutumika kwa character-style 
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Ikiwa deployment hii ina object storage iliyosanidiwa, omba presigned storage link kutoka /v1/avatar/link. Endpoint hiyo huhifadhi generated object na kurudisha JSON yenye signed URL, object key, na hashed cache key. Avatar responses za kawaida hazionyeshi signed-link metadata kwenye response headers."
 open_source = "Open Source"
-open_source_text = "Source ya public site iko kwenye API repository na reusable avatar renderer imechapishwa crates.io."
+open_source_text = "Source ya public site iko kwenye GitHub repository na reusable avatar renderer imechapishwa crates.io."
 
 [pages.docs]
 title = "Nyaraka"
@@ -132,7 +132,7 @@ logging_text = "Kulingana na deployment, infrastructure components kama nginx, C
 avoid = "Nini Ni Bora Kutopeleka"
 avoid_text = "Email-shaped identifiers zinakubaliwa kwa compatibility, lakini URLs zinaweza kuonekana kwenye infrastructure logs. Tuma stable internal id au one-way application hash ikiwa unataka kuepuka personal data kwenye request URL."
 repository = "Repository Na Crate"
-repository_text = "Unaweza kukagua implementation kwenye public API repository na reusable avatar renderer kwenye Rust crate."
+repository_text = "Unaweza kukagua implementation kwenye public GitHub repository na reusable avatar renderer kwenye Rust crate."
 translations = "Maelezo ya tafsiri"
 translations_text = "Tafsiri za tovuti zimesaidiwa na AI na zimefanywa kwa juhudi bora. Ukiona maneno yanayopaswa kuboreshwa, michango kwenye GitHub inakaribishwa."
 translations_link = "Boresha tafsiri"

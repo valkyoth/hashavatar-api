@@ -2,11 +2,11 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/hashavatar-api-podman.XXXXXX")
-IMAGE="${HASHAVATAR_API_IMAGE:-hashavatar-api:local-wolfi}"
-CONTAINER_NAME="hashavatar-api-smoke-$$"
-EXPECTED_UID="${HASHAVATAR_API_EXPECTED_UID:-10001}"
-KEEP_LOGS="${HASHAVATAR_API_PODMAN_KEEP_LOGS:-0}"
+TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/hashavatar-website-podman.XXXXXX")
+IMAGE="${HASHAVATAR_WEBSITE_IMAGE:-hashavatar-website:local-wolfi}"
+CONTAINER_NAME="hashavatar-website-smoke-$$"
+EXPECTED_UID="${HASHAVATAR_WEBSITE_EXPECTED_UID:-10001}"
+KEEP_LOGS="${HASHAVATAR_WEBSITE_PODMAN_KEEP_LOGS:-0}"
 
 cleanup() {
     status=$?

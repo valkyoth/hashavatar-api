@@ -1,4 +1,4 @@
-# hashavatar-api 0.10.0 Release Notes
+# hashavatar-website 0.10.0 Release Notes
 
 Status: released
 

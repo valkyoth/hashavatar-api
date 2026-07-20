@@ -70,7 +70,7 @@ style_layer_note = "Accessory және expression layers character-style familie
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Бұл deployment ішінде object storage configured болса, /v1/avatar/link арқылы presigned storage link сұра. Ол endpoint generated object-ті store етеді және signed URL, object key және hashed cache key бар JSON қайтарады. Standard avatar responses response headers ішінде signed-link metadata көрсетпейді."
 open_source = "Open Source"
-open_source_text = "Public site source API repository ішінде, reusable avatar renderer crates.io ішінде publish етілген."
+open_source_text = "Public site source GitHub repository ішінде, reusable avatar renderer crates.io ішінде publish етілген."
 
 [pages.docs]
 title = "Құжаттама"
@@ -132,7 +132,7 @@ logging_text = "Deployment-ке байланысты nginx, Caddy, Cloudflare, h
 avoid = "Нені Жібермеген Жақсы"
 avoid_text = "Email-shaped identifiers compatibility үшін қабылданады, бірақ URLs infrastructure logs ішінде көрінуі мүмкін. Request URL ішінде personal data болмауын қаласаң stable internal id немесе one-way application hash жібер."
 repository = "Repository Және Crate"
-repository_text = "Implementation-ды public API repository ішінде және reusable avatar renderer-ді Rust crate ішінде тексере аласың."
+repository_text = "Implementation-ды public GitHub repository ішінде және reusable avatar renderer-ді Rust crate ішінде тексере аласың."
 translations = "Аударма ескертпесі"
 translations_text = "Website аудармалары AI-assisted және best effort негізінде жасалған. Жақсартуға болатын wording көрсең, GitHub-тағы contributions құпталады."
 translations_link = "Аудармаларды жақсарту"

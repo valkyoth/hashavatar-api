@@ -70,7 +70,7 @@ style_layer_note = "Baineann accessory agus expression layers le character-style
 signed_storage_links = "Naisc Stórála Sínithe"
 signed_storage_links_text = "Má tá object storage cumraithe ag an deployment seo, iarr presigned storage link ó /v1/avatar/link. Stórálann an endpoint sin an generated object agus filleann sé JSON le signed URL, object key agus hashed cache key. Ní nochtann avatar responses caighdeánacha signed-link metadata i response headers."
 open_source = "Foinse Oscailte"
-open_source_text = "Tá source an tsuímh phoiblí sa API repository agus foilsítear an reusable avatar renderer ar crates.io."
+open_source_text = "Tá source an tsuímh phoiblí sa GitHub repository agus foilsítear an reusable avatar renderer ar crates.io."
 
 [pages.docs]
 title = "Doiciméadú"
@@ -132,7 +132,7 @@ logging_text = "Ag brath ar deployment, d'fhéadfadh infrastructure components m
 avoid = "Cad Ba Chóir A Sheachaint"
 avoid_text = "Glactar le email-shaped identifiers ar mhaithe le compatibility, ach d'fhéadfadh URLs a bheith le feiceáil i infrastructure logs. Seol stable internal id nó one-way application hash nuair is mian leat personal data a sheachaint sa request URL."
 repository = "Repository Agus Crate"
-repository_text = "Is féidir leat an implementation a iniúchadh sa public API repository agus an reusable avatar renderer sa Rust crate."
+repository_text = "Is féidir leat an implementation a iniúchadh sa public GitHub repository agus an reusable avatar renderer sa Rust crate."
 translations = "Nóta faoi aistriúcháin"
 translations_text = "Tá aistriúcháin an tsuímh le cabhair AI agus de réir an iarrachta is fearr. Má fheiceann tú foclaíocht le feabhsú, tá fáilte roimh ranníocaíochtaí ar GitHub."
 translations_link = "Feabhsaigh aistriúcháin"

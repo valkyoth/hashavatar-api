@@ -1,4 +1,4 @@
-# hashavatar-api 1.0.3 Release Notes
+# hashavatar-website 1.0.3 Release Notes
 
 Status: released
 
@@ -11,7 +11,7 @@ These notes are reconstructed from the tag and commit history.
 
 ## Changed
 
-- Updated the service and documentation to `hashavatar-api` `1.0.3`.
+- Updated the service and documentation to `hashavatar-website` `1.0.3`.
 - Updated the renderer dependency to the latest `hashavatar` crate available for
   the release.
 - Updated direct crates and GitHub workflow tooling where possible.

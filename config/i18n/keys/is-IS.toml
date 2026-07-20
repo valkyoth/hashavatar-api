@@ -70,7 +70,7 @@ style_layer_note = "Aukahluta- og svipbrigðalög eiga við um persónulíkar fj
 signed_storage_links = "Undirritaðir geymslutenglar"
 signed_storage_links_text = "Ef þessi deployment er með hlutageymslu stillta skaltu biðja um forskráðan geymslutengil frá /v1/avatar/link. Sá endpoint geymir myndaða hlutinn og skilar JSON með undirrituðu URL-i, object key og höshuðum cache key. Venjuleg avatar-svör birta ekki metadata fyrir undirritaða tengla í response headers."
 open_source = "Opinn hugbúnaður"
-open_source_text = "Kóði opinberu síðunnar er í API-repository og endurnýtanlegi avatar-rendererinn er birtur á crates.io."
+open_source_text = "Kóði opinberu síðunnar er í GitHub-repository og endurnýtanlegi avatar-rendererinn er birtur á crates.io."
 
 [pages.docs]
 title = "Skjölun"
@@ -132,7 +132,7 @@ logging_text = "Eftir deployment geta innviðahlutar eins og nginx, Caddy, Cloud
 avoid = "Það sem þú ættir að forðast að senda"
 avoid_text = "Tölvupóstlík auðkenni eru samþykkt til samhæfni, en URL geta birst í innviðaloggum. Sendu stöðugt innra id eða einstefnu application-hash þegar þú vilt forðast að setja persónuupplýsingar í request-URL."
 repository = "Repository og crate"
-repository_text = "Þú getur skoðað útfærsluna í opinbera API-repositoryinu og endurnýtanlega avatar-rendererinn í Rust-crate-inu."
+repository_text = "Þú getur skoðað útfærsluna í opinbera GitHub-repositoryinu og endurnýtanlega avatar-rendererinn í Rust-crate-inu."
 translations = "Athugasemd um þýðingar"
 translations_text = "Þýðingar vefsins eru gerðar með aðstoð gervigreindar og eftir bestu getu. Ef þú sérð orðalag sem mætti bæta eru framlög velkomin á GitHub."
 translations_link = "Bæta þýðingar"

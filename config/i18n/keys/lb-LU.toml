@@ -70,7 +70,7 @@ style_layer_note = "Accessory an expression layers gëlle fir character-style fa
 signed_storage_links = "Ënnerschriwwe Späicherlinken"
 signed_storage_links_text = "Wann dësen deployment object storage konfiguréiert huet, frot e presigned storage link vun /v1/avatar/link un. Dësen endpoint späichert den generated object a gëtt JSON mat signed URL, object key an hashed cache key zeréck. Standard avatar responses weisen keng signed-link metadata an response headers."
 open_source = "Open Source"
-open_source_text = "De public site source läit am API repository an de reusable avatar renderer gëtt op crates.io publizéiert."
+open_source_text = "De public site source läit am GitHub repository an de reusable avatar renderer gëtt op crates.io publizéiert."
 
 [pages.docs]
 title = "Dokumentatioun"
@@ -132,7 +132,7 @@ logging_text = "Ofhängeg vum deployment kënnen infrastructure components wéi 
 avoid = "Wat Dir Net Schécke Sollt"
 avoid_text = "Email-shaped identifiers ginn aus compatibility Grënn akzeptéiert, mee URLs kënnen an infrastructure logs opdauchen. Schéckt stable internal id oder one-way application hash, wann Dir personal data am request URL vermeide wëllt."
 repository = "Repository A Crate"
-repository_text = "Dir kënnt d'implementation am public API repository an de reusable avatar renderer am Rust crate nokucken."
+repository_text = "Dir kënnt d'implementation am public GitHub repository an de reusable avatar renderer am Rust crate nokucken."
 translations = "Hiweis zu Iwwersetzungen"
 translations_text = "D'Iwwersetzunge vun der Websäit si mat KI ënnerstëtzt a no beschtem Effort gemaach. Wann s du Formuléierungen gesäis, déi besser solle ginn, si Bäiträg op GitHub wëllkomm."
 translations_link = "Iwwersetzunge verbesseren"

@@ -70,7 +70,7 @@ style_layer_note = "لایه‌های accessory و expression برای character
 signed_storage_links = "لینک‌های ذخیره‌سازی امضاشده"
 signed_storage_links_text = "اگر این deployment دارای object storage پیکربندی‌شده باشد، از /v1/avatar/link یک presigned storage link درخواست کنید. این endpoint شیء تولیدشده را ذخیره می‌کند و JSON شامل signed URL، object key و hashed cache key برمی‌گرداند. Avatar responses استاندارد signed-link metadata را در response headers نمایش نمی‌دهند."
 open_source = "Open Source"
-open_source_text = "Source سایت عمومی در API repository است و reusable avatar renderer در crates.io منتشر شده است."
+open_source_text = "Source سایت عمومی در GitHub repository است و reusable avatar renderer در crates.io منتشر شده است."
 
 [pages.docs]
 title = "مستندات"
@@ -132,7 +132,7 @@ logging_text = "بسته به deployment، infrastructure components مانند 
 avoid = "چه چیزی بهتر است ارسال نکنید"
 avoid_text = "Email-shaped identifiers برای compatibility پذیرفته می‌شوند، اما URLs ممکن است در infrastructure logs ظاهر شوند. اگر می‌خواهید از personal data در request URL پرهیز کنید، stable internal id یا one-way application hash ارسال کنید."
 repository = "Repository و Crate"
-repository_text = "می‌توانید implementation را در public API repository و reusable avatar renderer را در Rust crate بررسی کنید."
+repository_text = "می‌توانید implementation را در public GitHub repository و reusable avatar renderer را در Rust crate بررسی کنید."
 translations = "یادداشت ترجمه"
 translations_text = "ترجمه‌های وب‌سایت با کمک هوش مصنوعی و به‌صورت بهترین تلاش انجام شده‌اند. اگر عبارتی دیدید که باید بهتر شود، مشارکت در GitHub خوش‌آمد است."
 translations_link = "بهبود ترجمه‌ها"

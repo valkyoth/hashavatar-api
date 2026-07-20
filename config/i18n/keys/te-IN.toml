@@ -70,7 +70,7 @@ style_layer_note = "Accessory మరియు expression layers character-style 
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "ఈ deployment లో object storage configured ఉంటే /v1/avatar/link నుండి presigned storage link అడగండి. ఆ endpoint generated object ను store చేసి signed URL, object key, hashed cache key కలిగిన JSON ఇస్తుంది. Standard avatar responses response headers లో signed-link metadata చూపవు."
 open_source = "Open Source"
-open_source_text = "Public site source API repository లో ఉంది మరియు reusable avatar renderer crates.io లో publish చేయబడింది."
+open_source_text = "Public site source GitHub repository లో ఉంది మరియు reusable avatar renderer crates.io లో publish చేయబడింది."
 
 [pages.docs]
 title = "డాక్యుమెంటేషన్"
@@ -132,7 +132,7 @@ logging_text = "Deployment ఆధారంగా nginx, Caddy, Cloudflare, hosti
 avoid = "ఏది పంపకుండా ఉండటం మంచిది"
 avoid_text = "Email-shaped identifiers compatibility కోసం అనుమతించబడతాయి, కానీ URLs infrastructure logs లో కనిపించవచ్చు. Request URL లో personal data తప్పించుకోవాలంటే stable internal id లేదా one-way application hash పంపండి."
 repository = "Repository మరియు Crate"
-repository_text = "మీరు implementation ను public API repository లో మరియు reusable avatar renderer ను Rust crate లో చూడవచ్చు."
+repository_text = "మీరు implementation ను public GitHub repository లో మరియు reusable avatar renderer ను Rust crate లో చూడవచ్చు."
 translations = "అనువాద గమనిక"
 translations_text = "వెబ్‌సైట్ అనువాదాలు AI సహాయంతో, ఉత్తమ ప్రయత్నంగా చేయబడ్డాయి. మెరుగుపరచాల్సిన పదప్రయోగం కనిపిస్తే GitHubలో మీ సహకారం స్వాగతం."
 translations_link = "అనువాదాలను మెరుగుపరచండి"

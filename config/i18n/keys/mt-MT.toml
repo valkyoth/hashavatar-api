@@ -70,7 +70,7 @@ style_layer_note = "Accessory u expression layers japplikaw għal character-styl
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Jekk dan deployment għandu object storage configured, itlob presigned storage link minn /v1/avatar/link. Dak endpoint store il-generated object u jirritorna JSON b'signed URL, object key u hashed cache key. Standard avatar responses ma jesponux signed-link metadata fir-response headers."
 open_source = "Open Source"
-open_source_text = "Is-source tal-public site jinsab fl-API repository u r-reusable avatar renderer huwa publish fuq crates.io."
+open_source_text = "Is-source tal-public site jinsab fl-GitHub repository u r-reusable avatar renderer huwa publish fuq crates.io."
 
 [pages.docs]
 title = "Dokumentazzjoni"
@@ -132,7 +132,7 @@ logging_text = "Skont id-deployment, infrastructure components bħal nginx, Cadd
 avoid = "X'Aħjar Ma Tibgħatx"
 avoid_text = "Email-shaped identifiers jiġu aċċettati għal compatibility, iżda URLs jistgħu jidhru f'infrastructure logs. Ibgħat stable internal id jew one-way application hash jekk trid tevita personal data fir-request URL."
 repository = "Repository U Crate"
-repository_text = "Tista' tiċċekkja l-implementation fil-public API repository u r-reusable avatar renderer fil-Rust crate."
+repository_text = "Tista' tiċċekkja l-implementation fil-public GitHub repository u r-reusable avatar renderer fil-Rust crate."
 translations = "Nota dwar it-traduzzjonijiet"
 translations_text = "It-traduzzjonijiet tal-website huma assistiti b'AI u magħmula bl-aħjar sforz. Jekk tara kliem li għandu jitjieb, contributions fuq GitHub huma milqugħa."
 translations_link = "Ittejjeb it-traduzzjonijiet"

@@ -70,7 +70,7 @@ style_layer_note = "Accessory fi expression layers character-style families irra
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Deployment kun object storage configured yoo qabaate, /v1/avatar/link irraa presigned storage link gaafadhu. Endpoint sun generated object store godha, JSON signed URL, object key, fi hashed cache key qabu deebisa. Standard avatar responses response headers keessatti signed-link metadata hin mul'isan."
 open_source = "Open Source"
-open_source_text = "Source public site API repository keessa jira, reusable avatar renderer immoo crates.io irratti publish ta'eera."
+open_source_text = "Source public site GitHub repository keessa jira, reusable avatar renderer immoo crates.io irratti publish ta'eera."
 
 [pages.docs]
 title = "Galmee"
@@ -132,7 +132,7 @@ logging_text = "Deployment irratti hundaa'uun infrastructure components akka ngi
 avoid = "Maal Erguu Dhiisuun Wayya"
 avoid_text = "Email-shaped identifiers compatibility'f ni fudhatamu, garuu URLs infrastructure logs keessatti mul'achuu danda'u. Request URL keessatti personal data irraa fagaachuuf stable internal id yookaan one-way application hash ergi."
 repository = "Repository Fi Crate"
-repository_text = "Implementation public API repository keessatti, reusable avatar renderer Rust crate keessatti ilaaluu dandeessa."
+repository_text = "Implementation public GitHub repository keessatti, reusable avatar renderer Rust crate keessatti ilaaluu dandeessa."
 translations = "Hubachiisa hiikaa"
 translations_text = "Hiikawwan marsariitii AI'n deeggaramanii fi carraaqqii gaariin hojjetamaniiru. Jecha fooyya'uu qabu yoo argite, gumaachi GitHub irratti ni simatama."
 translations_link = "Hiikawwan fooyyessi"

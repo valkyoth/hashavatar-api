@@ -70,7 +70,7 @@ style_layer_note = "Accessory e expression layers s'applicano ê character-style
 signed_storage_links = "Link Storage Firmate"
 signed_storage_links_text = "Si chistu deployment tene object storage configurato, addimanna nu presigned storage link da /v1/avatar/link. Chillo endpoint sarva 'o generated object e torna JSON cu signed URL, object key e hashed cache key. 'E avatar responses standard nun espongono signed-link metadata dint'ê response headers."
 open_source = "Open Source"
-open_source_text = "'O source d' 'o sito pùbblico sta dint'ô API repository e 'o reusable avatar renderer è pubblicato ncopp'a crates.io."
+open_source_text = "'O source d' 'o sito pùbblico sta dint'ô GitHub repository e 'o reusable avatar renderer è pubblicato ncopp'a crates.io."
 
 [pages.docs]
 title = "Documentazione"
@@ -132,7 +132,7 @@ logging_text = "A seconda d' 'o deployment, infrastructure components comme ngin
 avoid = "Che È Meglio Nun Mannà"
 avoid_text = "Email-shaped identifiers so' accettate pe' compatibility, ma URLs ponno apparì dint'ê infrastructure logs. Manna stable internal id o one-way application hash si vuo' evitá personal data dint'â request URL."
 repository = "Repository E Crate"
-repository_text = "Può guardà l'implementation dint'ô public API repository e 'o reusable avatar renderer dint'â Rust crate."
+repository_text = "Può guardà l'implementation dint'ô public GitHub repository e 'o reusable avatar renderer dint'â Rust crate."
 translations = "Nota ncopp' 'e traduziune"
 translations_text = "'E traduziune d' 'o sito so' aiutate cu AI e fatte cu 'o meglio sforzo. Si vide parole ca se ponno migliurà, 'e cuntribute ncopp' a GitHub so' benvenute."
 translations_link = "Migliurà 'e traduziune"

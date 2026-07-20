@@ -70,7 +70,7 @@ style_layer_note = "Accessory dan expression layers berlaku untuk character-styl
 signed_storage_links = "Tautan Penyimpanan Bertanda Tangan"
 signed_storage_links_text = "Jika deployment ini memiliki object storage yang dikonfigurasi, minta presigned storage link dari /v1/avatar/link. Endpoint itu menyimpan generated object dan mengembalikan JSON dengan signed URL, object key, dan hashed cache key. Avatar responses standar tidak mengekspos signed-link metadata di response headers."
 open_source = "Open Source"
-open_source_text = "Source situs publik ada di API repository dan reusable avatar renderer dipublikasikan di crates.io."
+open_source_text = "Source situs publik ada di GitHub repository dan reusable avatar renderer dipublikasikan di crates.io."
 
 [pages.docs]
 title = "Dokumentasi"
@@ -132,7 +132,7 @@ logging_text = "Bergantung pada deployment, infrastructure components seperti ng
 avoid = "Yang Sebaiknya Tidak Dikirim"
 avoid_text = "Email-shaped identifiers diterima untuk compatibility, tetapi URLs dapat muncul di infrastructure logs. Kirim stable internal id atau one-way application hash jika ingin menghindari personal data di request URL."
 repository = "Repository Dan Crate"
-repository_text = "Anda dapat memeriksa implementation di public API repository dan reusable avatar renderer di Rust crate."
+repository_text = "Anda dapat memeriksa implementation di public GitHub repository dan reusable avatar renderer di Rust crate."
 translations = "Catatan Terjemahan"
 translations_text = "Terjemahan situs web dibantu AI dan dibuat dengan upaya terbaik. Jika Anda melihat kalimat yang perlu diperbaiki, kontribusi di GitHub sangat diterima."
 translations_link = "Perbaiki terjemahan"

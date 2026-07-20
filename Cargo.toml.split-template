@@ -1,13 +1,14 @@
 [package]
-name = "hashavatar-api"
+name = "hashavatar-website"
 version = "1.1.2"
 edition = "2024"
 rust-version = "1.97"
-description = "Public avatar API and landing page for hashavatar"
+description = "Demo website for the hashavatar Rust crate"
 license = "EUPL-1.2"
-repository = "https://github.com/valkyoth/hashavatar-api"
-homepage = "https://github.com/valkyoth/hashavatar-api"
-documentation = "https://github.com/valkyoth/hashavatar-api"
+publish = false
+repository = "https://github.com/valkyoth/hashavatar-website"
+homepage = "https://hashavatar.app"
+documentation = "https://github.com/valkyoth/hashavatar-website"
 
 [dependencies]
 hashavatar = { version = "1.1.2", path = "../hashavatar" }

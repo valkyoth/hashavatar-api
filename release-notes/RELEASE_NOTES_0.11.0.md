@@ -1,10 +1,10 @@
-# hashavatar-api 0.11.0 Release Notes
+# hashavatar-website 0.11.0 Release Notes
 
 Status: released
 
 ## Summary
 
-`0.11.0` updated the API service to the `hashavatar` `0.11.0` renderer.
+`0.11.0` updated the website to the `hashavatar` `0.11.0` renderer.
 
 These notes are reconstructed from the tag and commit history.
 

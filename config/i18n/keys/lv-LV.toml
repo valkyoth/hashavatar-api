@@ -70,7 +70,7 @@ style_layer_note = "Aksesuāru un izteiksmju slāņi tiek piemēroti character-s
 signed_storage_links = "Parakstītas Krātuves Saites"
 signed_storage_links_text = "Ja šajā deployment ir konfigurēta object storage, pieprasiet presigned storage link no /v1/avatar/link. Šis endpoint saglabā ģenerēto objektu un atgriež JSON ar signed URL, object key un hashed cache key. Standarta avatara atbildes response headers neatklāj signed-link metadata."
 open_source = "Atvērtais Kods"
-open_source_text = "Publiskās vietnes source atrodas API repository, un reusable avatar renderer ir publicēts crates.io."
+open_source_text = "Publiskās vietnes source atrodas GitHub repository, un reusable avatar renderer ir publicēts crates.io."
 
 [pages.docs]
 title = "Dokumentācija"
@@ -132,7 +132,7 @@ logging_text = "Atkarībā no deployment, infrastructure components, piemēram, 
 avoid = "Ko Labāk Nesūtīt"
 avoid_text = "Email-shaped identifiers tiek pieņemti compatibility dēļ, bet URLs var parādīties infrastructure logs. Sūtiet stable internal id vai one-way application hash, ja vēlaties izvairīties no personal data request URL."
 repository = "Repozitorijs un Crate"
-repository_text = "Implementation varat apskatīt public API repository, bet reusable avatar renderer - Rust crate."
+repository_text = "Implementation varat apskatīt public GitHub repository, bet reusable avatar renderer - Rust crate."
 translations = "Piezīme par tulkojumiem"
 translations_text = "Vietnes tulkojumi ir veidoti ar MI palīdzību un pēc labākās iespējas. Ja redzi tekstu, ko vajadzētu uzlabot, ieguldījumi GitHub ir gaidīti."
 translations_link = "Uzlabot tulkojumus"

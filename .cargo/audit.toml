@@ -1,5 +1,5 @@
 [database]
-path = "/tmp/hashavatar-api-cargo-audit-advisory-db"
+path = "/tmp/hashavatar-website-cargo-audit-advisory-db"
 url = "https://github.com/RustSec/advisory-db.git"
 fetch = true
 stale = false

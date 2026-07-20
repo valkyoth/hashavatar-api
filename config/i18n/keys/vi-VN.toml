@@ -70,7 +70,7 @@ style_layer_note = "Lớp phụ kiện và biểu cảm áp dụng cho các họ
 signed_storage_links = "Liên kết lưu trữ đã ký"
 signed_storage_links_text = "Nếu deployment này có cấu hình lưu trữ đối tượng, hãy yêu cầu liên kết lưu trữ presigned từ /v1/avatar/link. Endpoint đó lưu đối tượng đã tạo và trả JSON gồm URL đã ký, object key và cache key đã hash. Phản hồi avatar tiêu chuẩn không để lộ metadata liên kết đã ký trong response header."
 open_source = "Mã nguồn mở"
-open_source_text = "Mã nguồn trang công khai nằm trong kho API và trình render avatar tái sử dụng được phát hành trên crates.io."
+open_source_text = "Mã nguồn trang công khai nằm trong kho GitHub và trình render avatar tái sử dụng được phát hành trên crates.io."
 
 [pages.docs]
 title = "Tài liệu"
@@ -132,7 +132,7 @@ logging_text = "Tùy deployment, thành phần hạ tầng như nginx, Caddy, Cl
 avoid = "Nên tránh gửi gì"
 avoid_text = "Định danh dạng email được chấp nhận vì tương thích, nhưng URL có thể xuất hiện trong log hạ tầng. Gửi id nội bộ ổn định hoặc hash một chiều của ứng dụng khi bạn muốn tránh đặt dữ liệu cá nhân trong URL request."
 repository = "Kho mã và crate"
-repository_text = "Bạn có thể xem implementation trong kho API công khai và trình render avatar tái sử dụng trong Rust crate."
+repository_text = "Bạn có thể xem implementation trong kho GitHub công khai và trình render avatar tái sử dụng trong Rust crate."
 translations = "Ghi chú về bản dịch"
 translations_text = "Các bản dịch của trang web được AI hỗ trợ và thực hiện theo cách tốt nhất có thể. Nếu bạn thấy câu chữ cần cải thiện, chúng tôi hoan nghênh đóng góp trên GitHub."
 translations_link = "Cải thiện bản dịch"

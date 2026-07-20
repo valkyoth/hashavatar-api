@@ -1,18 +1,18 @@
-# hashavatar-api 0.4.2 Release Notes
+# hashavatar-website 0.4.2 Release Notes
 
 Status: released
 
 ## Summary
 
-`0.4.2` prepared the API crate for the next release and updated the Rust toolchain.
+`0.4.2` prepared the website application for the next release and updated the Rust toolchain.
 
 These notes are reconstructed from the tag and commit history.
 
 ## Changed
 
 - Updated the project to Rust `1.95`.
-- Prepared release metadata for `hashavatar-api` `0.4.2`.
-- Kept the crate and container release paths aligned with the GitHub-hosted
+- Prepared release metadata for `hashavatar-website` `0.4.2`.
+- Kept the application and container release paths aligned with the GitHub-hosted
   project metadata.
 
 ## Verification

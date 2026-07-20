@@ -1,4 +1,4 @@
-# cargo-deny dependency policy for hashavatar-api.
+# cargo-deny dependency policy for hashavatar-website.
 #
 # The project itself is licensed under EUPL-1.2. This allowlist admits the
 # project license and permissive dependency licenses that do not conflict with
@@ -41,7 +41,7 @@ wildcards = "allow"
 highlight = "all"
 
 [advisories]
-db-path = "/tmp/hashavatar-api-cargo-deny-advisory-dbs"
+db-path = "/tmp/hashavatar-website-cargo-deny-advisory-dbs"
 yanked = "deny"
 unmaintained = "workspace"
 unsound = "workspace"

@@ -6,7 +6,7 @@ COPY config ./config
 COPY src ./src
 
 RUN cargo build --release \
-    && cp target/release/hashavatar-api /usr/local/bin/hashavatar-api \
+    && cp target/release/hashavatar-website /usr/local/bin/hashavatar-website \
     && rm -rf target /usr/local/cargo/registry /usr/local/cargo/git
 
 FROM cgr.dev/chainguard/wolfi-base:latest@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
@@ -15,10 +15,10 @@ RUN addgroup -S appuser \
 WORKDIR /app
 
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=build /usr/local/bin/hashavatar-api /usr/local/bin/hashavatar-api
+COPY --from=build /usr/local/bin/hashavatar-website /usr/local/bin/hashavatar-website
 
 ENV PORT=8080
 ENV PUBLIC_WEBSITE_HOST=0.0.0.0
 EXPOSE 8080
 USER appuser
-CMD ["hashavatar-api"]
+CMD ["hashavatar-website"]

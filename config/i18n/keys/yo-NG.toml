@@ -70,7 +70,7 @@ style_layer_note = "Accessory àti expression layers ń ṣiṣẹ́ fún charac
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Bí deployment yìí bá ní object storage configured, béèrè presigned storage link láti /v1/avatar/link. Endpoint náà ń store generated object, ó sì ń dá JSON padà pẹ̀lú signed URL, object key, àti hashed cache key. Standard avatar responses kì í fi signed-link metadata hàn nínú response headers."
 open_source = "Open Source"
-open_source_text = "Source ti public site wà nínú API repository, reusable avatar renderer sì wà ní crates.io."
+open_source_text = "Source ti public site wà nínú GitHub repository, reusable avatar renderer sì wà ní crates.io."
 
 [pages.docs]
 title = "Ìwé ìtọ́nisọ́nà"
@@ -132,7 +132,7 @@ logging_text = "Ní ibámu pẹ̀lú deployment, infrastructure components bí n
 avoid = "Ohun Tó Dáa Kí O Má Ránṣẹ́"
 avoid_text = "Email-shaped identifiers ni a gba fún compatibility, ṣùgbọ́n URLs lè hàn nínú infrastructure logs. Rán stable internal id tàbí one-way application hash bí o bá fẹ́ yàgò fún personal data nínú request URL."
 repository = "Repository àti Crate"
-repository_text = "O lè ṣàyẹ̀wò implementation nínú public API repository àti reusable avatar renderer nínú Rust crate."
+repository_text = "O lè ṣàyẹ̀wò implementation nínú public GitHub repository àti reusable avatar renderer nínú Rust crate."
 translations = "Àkíyèsí ìtumọ̀"
 translations_text = "Àwọn ìtumọ̀ ojúlé wẹẹbu jẹ́ iranlọwọ AI àti ìgbìmọ̀ tó dára jù lọ. Tí o bá rí gbolóhùn tó yẹ kí a mú dára, a kí àwọn ìdásílẹ̀ lórí GitHub káàbọ̀."
 translations_link = "Mú ìtumọ̀ dára"

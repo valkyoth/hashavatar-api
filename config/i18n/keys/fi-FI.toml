@@ -70,7 +70,7 @@ style_layer_note = "Lisävaruste- ja ilmetasot koskevat hahmomaisia perheitä. O
 signed_storage_links = "Allekirjoitetut tallennuslinkit"
 signed_storage_links_text = "Jos tässä deploymentissa on objektitallennus määritettynä, pyydä ennakkoon allekirjoitettu tallennuslinkki endpointista /v1/avatar/link. Tämä endpoint tallentaa generoidun objektin ja palauttaa JSONin, jossa on allekirjoitettu URL, objektin avain ja hashattu välimuistiavain. Tavalliset avatar-vastaukset eivät paljasta allekirjoitetun linkin metadataa response headereissa."
 open_source = "Avoin lähdekoodi"
-open_source_text = "Julkisen sivuston lähdekoodi on API-repositoryssä ja uudelleenkäytettävä avatar-renderöijä julkaistaan crates.io:ssa."
+open_source_text = "Julkisen sivuston lähdekoodi on GitHub-repositoryssä ja uudelleenkäytettävä avatar-renderöijä julkaistaan crates.io:ssa."
 
 [pages.docs]
 title = "Dokumentaatio"
@@ -132,7 +132,7 @@ logging_text = "Deploymentista riippuen infrastruktuurikomponentit kuten nginx, 
 avoid = "Mitä kannattaa välttää lähettämästä"
 avoid_text = "Sähköpostin kaltaiset tunnisteet hyväksytään yhteensopivuuden vuoksi, mutta URL:t voivat näkyä infrastruktuurilokeissa. Lähetä vakaa sisäinen id tai yksisuuntainen sovellushash, kun haluat välttää henkilötietojen sijoittamista request-URL:iin."
 repository = "Repository ja crate"
-repository_text = "Voit tarkistaa toteutuksen julkisesta API-repositorystä ja uudelleenkäytettävän avatar-renderöijän Rust-cratesta."
+repository_text = "Voit tarkistaa toteutuksen julkisesta GitHub-repositorystä ja uudelleenkäytettävän avatar-renderöijän Rust-cratesta."
 translations = "Huomautus käännöksistä"
 translations_text = "Sivuston käännökset ovat tekoälyn avustamia ja parhaan yrityksen mukaisia. Jos huomaat sanamuotoja, joita pitäisi parantaa, osallistuminen GitHubissa on tervetullutta."
 translations_link = "Paranna käännöksiä"

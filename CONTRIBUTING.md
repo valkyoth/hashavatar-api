@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve `hashavatar-api`.
+Thanks for helping improve `hashavatar-website`.
 
 ## Development
 
@@ -19,7 +19,7 @@ scripts/checks.sh
 
 ## Visual Stability
 
-The API delegates deterministic rendering to `hashavatar`. Changes to request
+The website delegates deterministic rendering to `hashavatar`. Changes to request
 normalization, namespace handling, cache keys, style options, or encoder
 selection can still affect downstream users. Document intentional output or URL
 contract changes in the release notes.

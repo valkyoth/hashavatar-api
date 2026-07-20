@@ -70,7 +70,7 @@ style_layer_note = "Tillbehörs- og uttrykkslager gäller fyr karaktärsliknande
 signed_storage_links = "Signeraðar lagringslänkar"
 signed_storage_links_text = "Um denna deployment ar objektlagring konfigurerad, begär ien försignerað lagringslänk frå /v1/avatar/link. Den endpointen lagrer det genererað objektę og returnerer JSON med signerað URL, objektnyckel og ien hashad cachenyckel. Vanliga avatarsvar visar int metadata fyr signeraðar länkar i svarshuvuden."
 open_source = "Öppen källkod"
-open_source_text = "Den almenna webbplatsens källkod finns i API-repositoryt og den återanvändbara avatar-renderaren publiceras på crates.io."
+open_source_text = "Den almenna webbplatsens källkod finns i GitHub-repositoryt og den återanvändbara avatar-renderaren publiceras på crates.io."
 
 [pages.docs]
 title = "Dokumentasjuon"
@@ -132,7 +132,7 @@ logging_text = "Beroende på deployment kan infrastrukturkomponenter som nginx, 
 avoid = "Wað du bör undvika at skicka"
 avoid_text = "E-postliknande identifierär accepteras fyr kompatibilitet, men URL:er kan förekomma i infrastrukturloggar. Skicka iet stadugt internt id eld ien envägs-applikationshash när du will undvika at lägga persondata i förfrågnings-URL:en."
 repository = "Repository og crate"
-repository_text = "Du kan granska implementationę i det almenna API-repositoryt og den återanvändbara avatar-renderaren i Rust-craten."
+repository_text = "Du kan granska implementationę i det almenna GitHub-repositoryt og den återanvändbara avatar-renderaren i Rust-craten."
 translations = "Um översättningar"
 translations_text = "Översättninggan på såjton ir AI-hjälpt å gjord etter beste förmåga. Sir du ord som kan bli bätter, ir bidrag på GitHub välkomin."
 translations_link = "Bättra översättningar"

@@ -1,6 +1,8 @@
 # Versioning Policy
 
-`hashavatar-api` is intended to be safe for deterministic avatar URLs.
+`hashavatar-website` is the deployable demo application for `hashavatar`. Its
+Cargo package is private (`publish = false`); version tags describe website and
+container releases, not crates.io releases.
 
 ## Stable Rendering Contract
 

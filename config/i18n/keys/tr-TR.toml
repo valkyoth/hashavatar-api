@@ -70,7 +70,7 @@ style_layer_note = "Aksesuar ve ifade katmanları karakter tarzı ailelere uygul
 signed_storage_links = "İmzalı Depolama Bağlantıları"
 signed_storage_links_text = "Bu deployment'ta object storage yapılandırılmışsa /v1/avatar/link endpoint'inden presigned storage link isteyin. Bu endpoint oluşturulan nesneyi saklar ve imzalı URL, object key ve hashed cache key içeren JSON döndürür. Standart avatar yanıtları response header içinde signed-link metadata göstermez."
 open_source = "Açık Kaynak"
-open_source_text = "Public site source API deposunda, yeniden kullanılabilir avatar renderer ise crates.io üzerinde yayımlanır."
+open_source_text = "Public site source GitHub deposunda, yeniden kullanılabilir avatar renderer ise crates.io üzerinde yayımlanır."
 
 [pages.docs]
 title = "Belgeler"
@@ -132,7 +132,7 @@ logging_text = "Deployment'a bağlı olarak nginx, Caddy, Cloudflare, hosting pr
 avoid = "Göndermekten Kaçının"
 avoid_text = "Email-shaped identifiers compatibility için kabul edilir, ancak URLs infrastructure logs içinde görünebilir. Request URL içine personal data koymaktan kaçınmak istiyorsanız stable internal id veya one-way application hash gönderin."
 repository = "Depo ve Crate"
-repository_text = "Implementation'ı public API repository içinde, reusable avatar renderer'ı Rust crate içinde inceleyebilirsiniz."
+repository_text = "Implementation'ı public GitHub repository içinde, reusable avatar renderer'ı Rust crate içinde inceleyebilirsiniz."
 translations = "Çeviri Notu"
 translations_text = "Web sitesi çevirileri yapay zekâ desteklidir ve en iyi çaba ile hazırlanmıştır. İyileştirilmesi gereken bir ifade görürseniz GitHub üzerinden katkılar memnuniyetle karşılanır."
 translations_link = "Çevirileri iyileştir"

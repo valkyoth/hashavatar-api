@@ -70,7 +70,7 @@ style_layer_note = "Accessory va expression layers character-style families uchu
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Bu deployment ichida object storage configured bo‘lsa, /v1/avatar/link orqali presigned storage link so‘ra. Bu endpoint generated object-ni store qiladi va signed URL, object key hamda hashed cache key bilan JSON qaytaradi. Standard avatar responses response headers ichida signed-link metadata ko‘rsatmaydi."
 open_source = "Open Source"
-open_source_text = "Public site source API repository ichida, reusable avatar renderer esa crates.io-da publish qilingan."
+open_source_text = "Public site source GitHub repository ichida, reusable avatar renderer esa crates.io-da publish qilingan."
 
 [pages.docs]
 title = "Hujjatlar"
@@ -132,7 +132,7 @@ logging_text = "Deployment-ga qarab nginx, Caddy, Cloudflare, hosting providers 
 avoid = "Nimani Yubormagan Ma'qul"
 avoid_text = "Email-shaped identifiers compatibility uchun qabul qilinadi, lekin URLs infrastructure logs ichida ko‘rinishi mumkin. Request URL ichida personal data bo‘lmasin desang stable internal id yoki one-way application hash yubor."
 repository = "Repository Va Crate"
-repository_text = "Implementation-ni public API repository ichida va reusable avatar renderer-ni Rust crate ichida tekshirishing mumkin."
+repository_text = "Implementation-ni public GitHub repository ichida va reusable avatar renderer-ni Rust crate ichida tekshirishing mumkin."
 translations = "Tarjima eslatmasi"
 translations_text = "Website tarjimalari AI-assisted va best effort asosida qilingan. Yaxshilanishi kerak bo'lgan wording ko'rsang, GitHub'dagi contributions mamnuniyat bilan qabul qilinadi."
 translations_link = "Tarjimalarni yaxshilash"

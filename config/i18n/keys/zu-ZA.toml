@@ -70,7 +70,7 @@ style_layer_note = "Accessory nama-expression layers asebenza kuma-character-sty
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Uma le deployment ine-object storage configured, cela presigned storage link ku-/v1/avatar/link. Leyo endpoint i-store generated object futhi ibuyisa JSON ene-signed URL, object key, ne-hashed cache key. Standard avatar responses azivezi signed-link metadata kuma-response headers."
 open_source = "Open Source"
-open_source_text = "Source ye-public site iku-API repository, reusable avatar renderer ipublishwe ku-crates.io."
+open_source_text = "Source ye-public site iku-GitHub repository, reusable avatar renderer ipublishwe ku-crates.io."
 
 [pages.docs]
 title = "Amadokhumenti"
@@ -132,7 +132,7 @@ logging_text = "Kuye nge-deployment, infrastructure components njenge nginx, Cad
 avoid = "Okungcono Ukungakuthumeli"
 avoid_text = "Email-shaped identifiers zamukelwa ukuze kube compatibility, kodwa URLs zingavela kuma-infrastructure logs. Thumela stable internal id noma one-way application hash uma ufuna ukugwema personal data ku-request URL."
 repository = "Repository Ne-Crate"
-repository_text = "Ungahlola implementation ku-public API repository ne-reusable avatar renderer ku-Rust crate."
+repository_text = "Ungahlola implementation ku-public GitHub repository ne-reusable avatar renderer ku-Rust crate."
 translations = "Inothi yokuhumusha"
 translations_text = "Ukuhumusha kwewebhusayithi kusizwe yi-AI futhi kwenziwe ngomzamo omuhle kakhulu. Uma ubona amagama okufanele athuthukiswe, iminikelo ku-GitHub yamukelekile."
 translations_link = "Thuthukisa ukuhumusha"

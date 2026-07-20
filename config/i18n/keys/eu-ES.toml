@@ -70,7 +70,7 @@ style_layer_note = "Accessory eta expression layers character-style families-eta
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Deployment honek object storage configured badu, eskatu presigned storage link bat /v1/avatar/link bidez. Endpoint horrek generated object store egiten du eta signed URL, object key eta hashed cache key dituen JSON itzultzen du. Standard avatar responses-ek ez dute signed-link metadata response headers-etan erakusten."
 open_source = "Open Source"
-open_source_text = "Public site source API repository-n dago, eta reusable avatar renderer crates.io-n publish dago."
+open_source_text = "Public site source GitHub repository-n dago, eta reusable avatar renderer crates.io-n publish dago."
 
 [pages.docs]
 title = "Dokumentazioa"
@@ -132,7 +132,7 @@ logging_text = "Deployment-en arabera, nginx, Caddy, Cloudflare, hosting provide
 avoid = "Zer Ez Bidaltzea Hobe"
 avoid_text = "Email-shaped identifiers compatibility-rako onartzen dira, baina URLs infrastructure logs-etan ager daitezke. Bidali stable internal id edo one-way application hash request URL-an personal data saihestu nahi baduzu."
 repository = "Repository Eta Crate"
-repository_text = "Implementation public API repository-n eta reusable avatar renderer Rust crate-n ikus dezakezu."
+repository_text = "Implementation public GitHub repository-n eta reusable avatar renderer Rust crate-n ikus dezakezu."
 translations = "Itzulpen oharra"
 translations_text = "Webguneko itzulpenak AIren laguntzarekin eta ahalik eta hobekien egin dira. Hobetu beharreko testurik ikusten baduzu, GitHubeko ekarpenak ongi etorriak dira."
 translations_link = "Itzulpenak hobetu"

@@ -40,7 +40,7 @@ const TRUSTED_PROXIES_ENV: &str = "HASHAVATAR_TRUSTED_PROXIES";
 const DEFAULT_ID: &str = "cat@hashavatar.app";
 const SITE_NAME: &str = "hashavatar.app";
 const SITE_URL: &str = "https://hashavatar.app";
-const REPOSITORY_URL: &str = "https://github.com/valkyoth/hashavatar-api";
+const REPOSITORY_URL: &str = "https://github.com/valkyoth/hashavatar-website";
 const CRATE_URL: &str = "https://crates.io/crates/hashavatar/";
 const DEFAULT_NAMESPACE_TENANT: &str = "public";
 const DEFAULT_NAMESPACE_STYLE: &str = "v2";
@@ -77,7 +77,7 @@ const INVALID_AVATAR_SHAPE_MESSAGE: &str = "unsupported avatar shape";
 const INVALID_AVATAR_RENDER_MESSAGE: &str = "avatar generation failed";
 const INDEX_SCRIPT_SHA256: &str = "'sha256-7gjoUnTfcILxVkX3DugGXgaAEhWr+Pn91S0M+2HGQTs='";
 const INDEX_SCRIPT_SHA256_COMPAT: &str = "'sha256-ZswfTY7H35rbv8WC7NXBoiC7WNu86vSzCDChNWwZZDM='";
-const OTEL_SERVICE_NAME: &str = "hashavatar-api";
+const OTEL_SERVICE_NAME: &str = "hashavatar-website";
 const COUNTRY_UNKNOWN: &str = "unknown";
 const MAX_VISIBLE_SECONDS: u64 = 86_400;
 const DEFAULT_LOCALE_ID: &str = "en-EU";
@@ -970,26 +970,32 @@ impl Observability {
         let meter = global::meter(OTEL_SERVICE_NAME);
         Self {
             enabled,
-            requests: meter.u64_counter("hashavatar_api_requests_total").build(),
-            request_duration: meter
-                .f64_histogram("hashavatar_api_request_duration_seconds")
+            requests: meter
+                .u64_counter("hashavatar_website_requests_total")
                 .build(),
-            page_views: meter.u64_counter("hashavatar_api_page_views_total").build(),
+            request_duration: meter
+                .f64_histogram("hashavatar_website_request_duration_seconds")
+                .build(),
+            page_views: meter
+                .u64_counter("hashavatar_website_page_views_total")
+                .build(),
             page_visible: meter
-                .f64_histogram("hashavatar_api_page_visible_seconds")
+                .f64_histogram("hashavatar_website_page_visible_seconds")
                 .build(),
             outbound_clicks: meter
-                .u64_counter("hashavatar_api_outbound_clicks_total")
+                .u64_counter("hashavatar_website_outbound_clicks_total")
                 .build(),
-            ui_actions: meter.u64_counter("hashavatar_api_ui_actions_total").build(),
+            ui_actions: meter
+                .u64_counter("hashavatar_website_ui_actions_total")
+                .build(),
             ui_avatar_generations: meter
-                .u64_counter("hashavatar_api_ui_avatar_generations_total")
+                .u64_counter("hashavatar_website_ui_avatar_generations_total")
                 .build(),
             avatar_renders: meter
-                .u64_counter("hashavatar_api_avatar_renders_total")
+                .u64_counter("hashavatar_website_avatar_renders_total")
                 .build(),
             avatar_generation_duration: meter
-                .f64_histogram("hashavatar_api_avatar_generation_duration_seconds")
+                .f64_histogram("hashavatar_website_avatar_generation_duration_seconds")
                 .build(),
         }
     }
@@ -4586,7 +4592,7 @@ fn render_index_html(
         storage_links_enabled = storage_links_enabled,
         signed_disabled = disabled_attr(!storage_links_enabled),
         meta_tags = render_meta_tags(
-            &i18n.t("hero.title", "Public Avatar API"),
+            &i18n.t("hero.title", "Hashavatar Demo Website"),
             &description,
             "/",
             csp_nonce,
@@ -4737,7 +4743,7 @@ avatarUrl.search = new URLSearchParams({{
             signed_storage_links = i18n.t_attr("pages.help.signed_storage_links", "Signed Storage Links"),
             signed_storage_links_text = i18n.t_attr("pages.help.signed_storage_links_text", "If this deployment has object storage configured, request a presigned storage link from /v1/avatar/link."),
             open_source = i18n.t_attr("pages.help.open_source", "Open Source"),
-            open_source_text = i18n.t_attr("pages.help.open_source_text", "The public site source lives in the API repository and the reusable avatar renderer is published on crates.io."),
+            open_source_text = i18n.t_attr("pages.help.open_source_text", "The public site source lives in the GitHub repository and the reusable avatar renderer is published on crates.io."),
             repository = i18n.t_attr("nav.repository", "Repository"),
         ),
         csp_nonce,
@@ -4908,11 +4914,11 @@ fn render_privacy_html(csp_nonce: &CspNonce, telemetry_enabled: bool, i18n: I18n
 </section>
 <section class="card">
   <h2>{repository}</h2>
-  <p>{repository_text} <a class="inline-link" href="https://github.com/valkyoth/hashavatar-api" target="_blank" rel="noreferrer">{repo_label}</a> · <a class="inline-link" href="https://crates.io/crates/hashavatar/" target="_blank" rel="noreferrer">{crate_label}</a></p>
+  <p>{repository_text} <a class="inline-link" href="https://github.com/valkyoth/hashavatar-website" target="_blank" rel="noreferrer">{repo_label}</a> · <a class="inline-link" href="https://crates.io/crates/hashavatar/" target="_blank" rel="noreferrer">{crate_label}</a></p>
 </section>
 <section class="card">
   <h2>{translations}</h2>
-  <p>{translations_text} <a class="inline-link" href="https://github.com/valkyoth/hashavatar-api/tree/main/config/i18n/keys" target="_blank" rel="noreferrer">{translations_link}</a></p>
+  <p>{translations_text} <a class="inline-link" href="https://github.com/valkyoth/hashavatar-website/tree/main/config/i18n/keys" target="_blank" rel="noreferrer">{translations_link}</a></p>
 </section>
 "#,
             receives = i18n.t_attr("pages.privacy.receives", "What The Service Receives"),
@@ -4930,7 +4936,7 @@ fn render_privacy_html(csp_nonce: &CspNonce, telemetry_enabled: bool, i18n: I18n
             avoid = i18n.t_attr("pages.privacy.avoid", "What To Avoid Sending"),
             avoid_text = i18n.t_attr("pages.privacy.avoid_text", "Email-shaped identifiers are accepted for compatibility, but URLs can appear in infrastructure logs."),
             repository = i18n.t_attr("pages.privacy.repository", "Repository And Crate"),
-            repository_text = i18n.t_attr("pages.privacy.repository_text", "You can inspect the implementation in the public API repository and the reusable avatar renderer in the Rust crate."),
+            repository_text = i18n.t_attr("pages.privacy.repository_text", "You can inspect the website implementation in the public GitHub repository and the reusable avatar renderer in the Rust crate."),
             translations = i18n.t_attr("pages.privacy.translations", "Translation Notice"),
             translations_text = i18n.t_attr("pages.privacy.translations_text", "Website translations are AI-assisted and best effort. If you see wording that should be improved, contributions are welcome on GitHub."),
             translations_link = i18n.t_attr("pages.privacy.translations_link", "Improve translations"),
@@ -5732,7 +5738,7 @@ mod tests {
         assert!(is_allowed_click("action", "copy-url"));
         assert!(!is_allowed_click(
             "github",
-            "https://github.com/valkyoth/hashavatar-api"
+            "https://github.com/valkyoth/hashavatar-website"
         ));
         assert!(!is_allowed_click("action", "custom-user-input"));
 
@@ -6344,7 +6350,9 @@ mod tests {
         assert!(html.contains("Translation Notice"));
         assert!(html.contains("AI-assisted and best effort"));
         assert!(
-            html.contains("https://github.com/valkyoth/hashavatar-api/tree/main/config/i18n/keys")
+            html.contains(
+                "https://github.com/valkyoth/hashavatar-website/tree/main/config/i18n/keys"
+            )
         );
         assert!(html.contains("Improve translations"));
     }

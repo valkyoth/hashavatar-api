@@ -70,7 +70,7 @@ style_layer_note = "Accessory na expression layers na-arụ ọrụ maka charact
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Ọ bụrụ na deployment a nwere object storage configured, rịọ presigned storage link site na /v1/avatar/link. Endpoint ahụ na-store generated object ma weghachi JSON nwere signed URL, object key, na hashed cache key. Standard avatar responses anaghị egosi signed-link metadata na response headers."
 open_source = "Open Source"
-open_source_text = "Source nke public site dị na API repository, reusable avatar renderer ebipụtara na crates.io."
+open_source_text = "Source nke public site dị na GitHub repository, reusable avatar renderer ebipụtara na crates.io."
 
 [pages.docs]
 title = "Akwụkwọ"
@@ -132,7 +132,7 @@ logging_text = "Dabere na deployment, infrastructure components dịka nginx, Ca
 avoid = "Ihe Ka Mma Ịghara Izipu"
 avoid_text = "Email-shaped identifiers na-anabata maka compatibility, mana URLs nwere ike pụta na infrastructure logs. Zipu stable internal id ma ọ bụ one-way application hash ma ọ bụrụ na ịchọrọ izere personal data na request URL."
 repository = "Repository Na Crate"
-repository_text = "Ị nwere ike lelee implementation na public API repository na reusable avatar renderer na Rust crate."
+repository_text = "Ị nwere ike lelee implementation na public GitHub repository na reusable avatar renderer na Rust crate."
 translations = "Nkọwa ntụgharị asụsụ"
 translations_text = "Ntụgharị asụsụ webụsaịtị a bụ nke AI nyere aka ma bụrụ mbọ kacha mma. Ọ bụrụ na ị hụ okwu kwesịrị imezi, onyinye na GitHub nabatara."
 translations_link = "Meziwanye ntụgharị asụsụ"

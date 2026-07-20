@@ -70,7 +70,7 @@ style_layer_note = "שכבות accessory ו-expression מוחלות על charact
 signed_storage_links = "קישורי אחסון חתומים"
 signed_storage_links_text = "אם ל-deployment הזה מוגדר object storage, בקשו presigned storage link מ-/v1/avatar/link. ה-endpoint שומר את ה-generated object ומחזיר JSON עם signed URL, object key ו-hashed cache key. תגובות avatar רגילות אינן חושפות signed-link metadata ב-response headers."
 open_source = "Open Source"
-open_source_text = "Source האתר הציבורי נמצא ב-API repository וה-reusable avatar renderer מפורסם ב-crates.io."
+open_source_text = "Source האתר הציבורי נמצא ב-GitHub repository וה-reusable avatar renderer מפורסם ב-crates.io."
 
 [pages.docs]
 title = "תיעוד"
@@ -132,7 +132,7 @@ logging_text = "בהתאם ל-deployment, infrastructure components כמו nginx
 avoid = "מה עדיף לא לשלוח"
 avoid_text = "Email-shaped identifiers מתקבלים לצורך compatibility, אך URLs עשויים להופיע ב-infrastructure logs. שלחו stable internal id או one-way application hash אם ברצונכם להימנע מ-personal data ב-request URL."
 repository = "Repository ו-Crate"
-repository_text = "אפשר לבדוק את ה-implementation ב-public API repository ואת ה-reusable avatar renderer ב-Rust crate."
+repository_text = "אפשר לבדוק את ה-implementation ב-public GitHub repository ואת ה-reusable avatar renderer ב-Rust crate."
 translations = "הערת תרגום"
 translations_text = "תרגומי האתר נעשו בסיוע AI ועל בסיס מאמץ מיטבי. אם ראית ניסוח שכדאי לשפר, תרומות ב-GitHub יתקבלו בברכה."
 translations_link = "שפרו תרגומים"

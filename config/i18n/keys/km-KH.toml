@@ -70,7 +70,7 @@ style_layer_note = "Accessory និង expression layers ត្រូវបា�
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "ប្រសិនបើ deployment នេះមាន object storage configured សូមស្នើ presigned storage link ពី /v1/avatar/link។ Endpoint នោះ store generated object ហើយត្រឡប់ JSON មាន signed URL, object key និង hashed cache key។ Standard avatar responses មិនបង្ហាញ signed-link metadata ក្នុង response headers ទេ។"
 open_source = "Open Source"
-open_source_text = "Source របស់ public site ស្ថិតនៅក្នុង API repository ហើយ reusable avatar renderer ត្រូវបាន publish នៅ crates.io។"
+open_source_text = "Source របស់ public site ស្ថិតនៅក្នុង GitHub repository ហើយ reusable avatar renderer ត្រូវបាន publish នៅ crates.io។"
 
 [pages.docs]
 title = "ឯកសារ"
@@ -132,7 +132,7 @@ logging_text = "អាស្រ័យលើ deployment, infrastructure component
 avoid = "អ្វីគួរជៀសវាងផ្ញើ"
 avoid_text = "Email-shaped identifiers ត្រូវបានទទួលសម្រាប់ compatibility ប៉ុន្តែ URLs អាចបង្ហាញក្នុង infrastructure logs។ ផ្ញើ stable internal id ឬ one-way application hash ប្រសិនបើចង់ជៀសវាង personal data ក្នុង request URL។"
 repository = "Repository និង Crate"
-repository_text = "អ្នកអាចពិនិត្យ implementation ក្នុង public API repository និង reusable avatar renderer ក្នុង Rust crate។"
+repository_text = "អ្នកអាចពិនិត្យ implementation ក្នុង public GitHub repository និង reusable avatar renderer ក្នុង Rust crate។"
 translations = "កំណត់សម្គាល់អំពីការបកប្រែ"
 translations_text = "ការបកប្រែគេហទំព័រត្រូវបានជួយដោយ AI និងធ្វើឡើងតាមកម្រិតខិតខំបំផុត។ ប្រសិនបើអ្នកឃើញពាក្យដែលគួរត្រូវបានកែលម្អ ការរួមចំណែកនៅលើ GitHub ត្រូវបានស្វាគមន៍។"
 translations_link = "កែលម្អការបកប្រែ"

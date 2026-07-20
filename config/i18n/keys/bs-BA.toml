@@ -70,7 +70,7 @@ style_layer_note = "Accessory i expression layers primjenjuju se na character-st
 signed_storage_links = "Signed Storage Links"
 signed_storage_links_text = "Ako ovaj deployment ima object storage configured, zatraži presigned storage link iz /v1/avatar/link. Taj endpoint store generated object i vraća JSON sa signed URL, object key i hashed cache key. Standard avatar responses ne prikazuju signed-link metadata u response headers."
 open_source = "Open Source"
-open_source_text = "Source javnog sajta je u API repository, a reusable avatar renderer je publish na crates.io."
+open_source_text = "Source javnog sajta je u GitHub repository, a reusable avatar renderer je publish na crates.io."
 
 [pages.docs]
 title = "Dokumentacija"
@@ -132,7 +132,7 @@ logging_text = "Zavisno od deployment, infrastructure components kao nginx, Cadd
 avoid = "Šta Je Bolje Ne Slati"
 avoid_text = "Email-shaped identifiers se prihvataju radi compatibility, ali URLs se mogu pojaviti u infrastructure logs. Pošalji stable internal id ili one-way application hash ako želiš izbjeći personal data u request URL."
 repository = "Repository I Crate"
-repository_text = "Možeš pregledati implementation u public API repository i reusable avatar renderer u Rust crate."
+repository_text = "Možeš pregledati implementation u public GitHub repository i reusable avatar renderer u Rust crate."
 translations = "Napomena o prijevodima"
 translations_text = "Prijevodi stranice su potpomognuti AI-jem i urađeni uz najbolji trud. Ako vidiš formulaciju koju treba poboljšati, doprinosi na GitHubu su dobrodošli."
 translations_link = "Poboljšaj prijevode"

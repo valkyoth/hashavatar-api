@@ -18,9 +18,10 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use hashavatar::{
-    AVATAR_STYLE_VERSION, AvatarAccessory, AvatarBackground, AvatarBuilder, AvatarColor,
-    AvatarExpression, AvatarKind, AvatarNamespace, AvatarOptions, AvatarOutputFormat, AvatarShape,
-    AvatarSpec, AvatarStyleOptions, SemanticEncodedAssetKey, render_avatar_for_namespace,
+    AVATAR_STYLE_VERSION, AvatarAccessory, AvatarBackground, AvatarColor, AvatarExpression,
+    AvatarIdentity, AvatarKind, AvatarNamespace, AvatarOptions, AvatarOutputFormat,
+    AvatarRequest as HashavatarRequest, AvatarShape, AvatarSpec, AvatarStyleOptions,
+    PreparedAvatar, SemanticEncodedAssetKey,
 };
 use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use ipnet::IpNet;
@@ -1771,20 +1772,21 @@ fn build_og_png_bytes(
         .into_iter()
         .enumerate()
     {
-        let avatar = render_avatar_for_namespace(
-            spec,
-            namespace,
-            title_id,
-            AvatarOptions::new(
+        let identity = AvatarIdentity::new_with_namespace(namespace, title_id)
+            .map_err(|_| OgPngError::BadRequest(INVALID_AVATAR_RENDER_MESSAGE))?;
+        let avatar = HashavatarRequest::builder(identity)
+            .spec(spec)
+            .options(AvatarOptions::new(
                 kind,
                 if idx == 1 {
                     AvatarBackground::White
                 } else {
                     AvatarBackground::Themed
                 },
-            ),
-        )
-        .map_err(|_| OgPngError::BadRequest(INVALID_AVATAR_RENDER_MESSAGE))?;
+            ))
+            .prepare()
+            .and_then(|prepared| prepared.render().map_err(Into::into))
+            .map_err(|_| OgPngError::BadRequest(INVALID_AVATAR_RENDER_MESSAGE))?;
         overlay(&mut canvas, &avatar, 110 + idx as u32 * 260, 180)
             .map_err(|error| OgPngError::Internal(error.to_string()))?;
     }
@@ -2625,6 +2627,22 @@ async fn generate_avatar_asset(request: AvatarRequest) -> Result<AvatarAsset, Re
 
 fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
     let identity = request.identity.trim();
+    let prepared = prepare_avatar_request(request)?;
+    let cache_key = prepared.encoded_asset_key(AvatarOutputFormat::WebP);
+    let body = prepared
+        .encode(AvatarOutputFormat::WebP)
+        .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())?;
+
+    Ok(AvatarAsset {
+        body,
+        content_type: "image/webp",
+        cache_key,
+        object_key: object_key_for(request, identity),
+    })
+}
+
+fn prepare_avatar_request(request: &AvatarRequest) -> Result<PreparedAvatar, String> {
+    let identity = request.identity.trim();
     validate_identity(identity)?;
     validate_namespace_component("tenant", &request.namespace_tenant)?;
     validate_namespace_component("style_version", &request.namespace_style)?;
@@ -2635,24 +2653,15 @@ fn build_avatar_asset(request: &AvatarRequest) -> Result<AvatarAsset, String> {
 
     let spec = AvatarSpec::new(request.size, request.size, 0)
         .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())?;
-    let builder = AvatarBuilder::for_id(identity)
+    let namespace = AvatarNamespace::new(&request.namespace_tenant, &request.namespace_style)
+        .map_err(|_| INVALID_NAMESPACE_MESSAGE.to_string())?;
+    let identity = AvatarIdentity::new_with_namespace(namespace, identity)
+        .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())?;
+    HashavatarRequest::builder(identity)
         .spec(spec)
-        .namespace(&request.namespace_tenant, &request.namespace_style)
         .style(request.style_options())
-        .strict_style_validation();
-    let cache_key = builder
-        .encoded_asset_key(AvatarOutputFormat::WebP)
-        .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())?;
-    let body = builder
-        .encode(AvatarOutputFormat::WebP)
-        .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())?;
-
-    Ok(AvatarAsset {
-        body,
-        content_type: "image/webp",
-        cache_key,
-        object_key: object_key_for(request, identity),
-    })
+        .prepare()
+        .map_err(|_| INVALID_AVATAR_RENDER_MESSAGE.to_string())
 }
 
 fn cache_headers(etag: &str) -> HeaderMap {
@@ -6478,9 +6487,11 @@ mod tests {
 
     #[test]
     fn etag_uses_full_sha256_digest() {
-        let cache_key = AvatarBuilder::for_id("etag@example.com")
-            .encoded_asset_key(AvatarOutputFormat::WebP)
-            .expect("semantic cache key should derive");
+        let identity = AvatarIdentity::new("etag@example.com").expect("valid identity");
+        let cache_key = HashavatarRequest::builder(identity)
+            .prepare()
+            .expect("request should prepare")
+            .encoded_asset_key(AvatarOutputFormat::WebP);
         let etag = etag_for(&cache_key);
         let raw = etag.trim_matches('"');
 
@@ -6819,12 +6830,29 @@ mod tests {
     }
 
     #[test]
-    fn build_avatar_asset_renders_webp_with_hashavatar_1_2_0() {
+    fn build_avatar_asset_renders_webp_with_hashavatar_1_3_0() {
         let request = test_avatar_request(AvatarRequestFormat::Webp);
         let asset = build_avatar_asset(&request).expect("webp avatar should render");
 
         assert_eq!(asset.content_type, "image/webp");
         assert!(asset.body.starts_with(b"RIFF"));
+    }
+
+    #[test]
+    fn prepared_avatar_reports_bounded_resource_budget() {
+        let request = test_avatar_request(AvatarRequestFormat::Webp);
+        let prepared = prepare_avatar_request(&request).expect("request should prepare");
+        let budget = prepared.resource_budget();
+        let expected_surface_bytes = request.size as usize * request.size as usize * 4;
+
+        assert_eq!(budget.spec(), prepared.spec());
+        assert_eq!(budget.minimum_rgba8_stride(), request.size as usize * 4);
+        assert_eq!(budget.minimum_rgba8_surface_bytes(), expected_surface_bytes);
+        assert_eq!(budget.render_into_temporary_bytes(), expected_surface_bytes);
+        assert_eq!(
+            budget.encode_vec_known_base_bytes(),
+            Some(expected_surface_bytes * 2)
+        );
     }
 
     #[test]

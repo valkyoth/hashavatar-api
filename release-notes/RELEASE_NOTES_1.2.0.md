@@ -1,14 +1,13 @@
 # hashavatar-website 1.2.0 Release Notes
 
-Status: release candidate
+Status: released
 
 ## Summary
 
 `1.2.0` prepares the website for the stable `hashavatar` `1.2.0` renderer and
 validates the new migration contracts against the complete application.
 
-These notes describe the crates.io-backed release candidate before the website
-is tagged.
+These notes describe the signed `v1.2.0` release tag.
 
 ## Changed
 
